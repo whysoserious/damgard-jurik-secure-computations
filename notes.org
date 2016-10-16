@@ -1,0 +1,7 @@
+* TODO Initial project
+:LOGBOOK:
+CLOCK: [2016-10-14 ptk 14:16]
+:END:
+* TODO Encrypted communication
+* TODO MultiJVM testing
+* TODO Env actor
