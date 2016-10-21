@@ -11,7 +11,8 @@ libraryDependencies ++= Seq(
   "com.github.nscala-time" %% "nscala-time" % "2.14.0",
   "com.typesafe" % "config" % "1.3.0",
   "com.typesafe.akka" %% "akka-actor" % akkaVersion,
-  "com.typesafe.akka" %% "akka-remote" % akkaVersion, // TODO test scope only ?
+  "com.typesafe.akka" %% "akka-contrib" % akkaVersion,
+  "com.typesafe.akka" %% "akka-remote" % akkaVersion,
   "com.typesafe.akka" %% "akka-testkit" % akkaVersion % "test",
   "org.scalacheck" %% "scalacheck" % "1.13.2" % "test",
   "org.scalatest" %% "scalatest" % "3.0.0" % "test"
