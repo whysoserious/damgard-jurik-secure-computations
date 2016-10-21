@@ -5,7 +5,7 @@ import com.typesafe.config.ConfigFactory
 import java.util.concurrent.TimeUnit.MILLISECONDS
 // import com.github.nscala_time.time.Imports._
 import scala.annotation.tailrec
-import scala.collection.immutable._
+// import scala.collection.immutable._
 import scala.concurrent.{ Await, Future }
 import scala.concurrent.duration.FiniteDuration
 import scala.util.{ Failure, Success, Try }
@@ -16,20 +16,8 @@ import akka.contrib.pattern._
 object Data {
 
   trait Protocol
-  case class Multiplicand(n: Int) extends Protocol
+
   case class LogMessage[Msg <: Protocol](msg: Msg, sndr: ActorPath, rcvr: ActorPath)
-
-  class A(calc: ActorRef, number: Int) extends Actor with LoggingInterceptor {
-
-    val log = Logging(context.system, this)
-
-    calc ! Multiplicand(number)
-
-    def receive = {
-      case Multiplicand(x) => log.info(s"received $x")
-    }
-
-  }
 
   class Env extends Actor with ActorLogging with LoggingInterceptor {
 
@@ -45,24 +33,58 @@ object Data {
 
     pipelineOuter {
       case msg: Protocol =>
-        implicit val ec = context.system.dispatcher
         loggingActor ! LogMessage(msg, sender().path, self.path)
         Inner(msg)
     }
 
   }
 
-  class Calc extends Actor with LoggingInterceptor {
+  case object Abort extends Protocol
+  case object Invite extends Protocol
+  case class Announce(numbers: Seq[EncryptedNumber]) extends Protocol
+  case class Result(number: EncryptedNumber) extends Protocol
 
-    var numbers: Map[ActorRef, Int] = Map()
+  class Client(number: () => Int) extends Actor with LoggingInterceptor { // TODO () => Int?
 
     def receive = {
-      case Multiplicand(n) if numbers.isEmpty =>
-        numbers = numbers + (sender() -> n)
-      case Multiplicand(n) =>
-        val result = Multiplicand(numbers.head._2 * n)
-        sender() ! result
-        numbers.head._1 ! result
+      case Invite => sender() ! EncryptedNumber(number())
+      case Abort =>
+      case Announce(numbers) =>
+      case Result(number) =>
+    }
+
+  }
+
+  case class Initialize(clients1: ActorRef, client2: ActorRef) extends Protocol // TODO seq or pair?
+  case class EncryptedNumber(n: Int) extends Protocol
+
+  class Broker extends Actor with LoggingInterceptor {
+
+    var clients: Map[ActorRef, Option[EncryptedNumber]] = Map()
+
+    def receive = {
+      case Initialize(client1, client2) =>
+        clients = Map(client1 -> None, client2 -> None)
+        clients.keys.foreach(_ ! Invite)
+      case en: EncryptedNumber if clients.contains(sender()) =>
+        clients = clients.updated(sender(), Some(en))
+        tryAnnounceNumbers(Seq(clients.values.toSeq: _*)) map { numbers =>
+          clients.keys.foreach(_ ! Result(EncryptedNumber(666)))
+        }
+    }
+
+    @tailrec
+    private def tryAnnounceNumbers(numbers: Seq[Option[EncryptedNumber]], acc: Seq[EncryptedNumber] = Seq()): Option[Seq[EncryptedNumber]] = {
+      numbers match {
+        case Nil if acc.size == clients.size =>
+          val msg = Announce(acc)
+          clients.keys.foreach(_ ! msg)
+          Some(acc)
+        case Some(en) :: tail =>
+          tryAnnounceNumbers(tail, acc :+ en)
+        case _ =>
+          None
+      }
     }
 
   }
@@ -79,13 +101,14 @@ object HelloWorld extends App {
   println("START")
   val system = ActorSystem("dj-actor-system", ConfigFactory.load(config))
   val env = system.actorOf(Props[Env], "logging-actor")
-    val calc = system.actorOf(Props[Calc], "broker")
-  val a1 = system.actorOf(Props(new A(calc, 7)), "client-1")
-  val a2 = system.actorOf(Props(new A(calc, 8)), "client-2")
+  val broker = system.actorOf(Props[Broker], "broker")
+  val a1 = system.actorOf(Props(new Client(() => 7)), "client-1")
+  val a2 = system.actorOf(Props(new Client(() => 8)), "client-2")
+  broker ! Initialize(a1, a2)
   Thread.sleep(2000)
   a1 ! PoisonPill // TODO send PoisonPill only
   a2 ! PoisonPill
-  calc ! PoisonPill
+  broker ! PoisonPill
   env ! PoisonPill
   system.terminate()
   Await.result(system.whenTerminated, 5.seconds)
