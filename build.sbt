@@ -18,6 +18,10 @@ libraryDependencies ++= Seq(
   "org.scalatest" %% "scalatest" % "3.0.0" % "test"
 ).map(_ withSources() withJavadoc())
 
+// fork := true
+
+// javaOptions := Seq("-Djava.library.path=jni/")
+
 // resolvers ++= Seq(
 //   "Sonatype OSS Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots/",
 //   "Sonatype OSS Releases" at "https://oss.sonatype.org/content/repositories/releases"

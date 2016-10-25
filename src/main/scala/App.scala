@@ -1,3 +1,5 @@
+package org.jz.iohk
+
 import akka.actor.{ Actor, ActorLogging, ActorPath, ActorRef, ActorSelection, ActorSystem, PoisonPill, Props }
 import akka.actor.ActorSystem
 import akka.contrib.pattern.ReceivePipeline.Inner
@@ -12,7 +14,14 @@ import scala.util.{ Failure, Success, Try }
 import scala.concurrent.duration._
 import akka.event.Logging
 import akka.contrib.pattern._
+import org.bouncycastle.util.BigIntegers;
 
+import edu.biu.scapi.primitives.dlog.DlogGroup;
+import edu.biu.scapi.primitives.dlog.GroupElement;
+import edu.biu.scapi.primitives.dlog.openSSL.OpenSSLDlogECF2m;
+
+import java.math.BigInteger
+import java.security.SecureRandom
 object Data {
 
   trait Protocol
@@ -44,7 +53,7 @@ object Data {
   case class Announce(numbers: Seq[EncryptedNumber]) extends Protocol
   case class Result(number: EncryptedNumber) extends Protocol
 
-  class Client(number: () => Int) extends Actor with LoggingInterceptor { // TODO () => Int?
+  class Client(number: () => Int) extends Actor { // TODO () => Int?
 
     def receive = {
       case Invite => sender() ! EncryptedNumber(number())
@@ -96,31 +105,49 @@ object Data {
 
 object HelloWorld extends App {
 
-  import Data._
+  println(">>>>>>>>" + System.getProperty("java.library.path"))
 
-  println("START")
-  val system = ActorSystem("dj-actor-system", ConfigFactory.load(config))
-  val env = system.actorOf(Props[Env], "logging-actor")
-  val broker = system.actorOf(Props[Broker], "broker")
-  val a1 = system.actorOf(Props(new Client(() => 7)), "client-1")
-  val a2 = system.actorOf(Props(new Client(() => 8)), "client-2")
-  broker ! Initialize(a1, a2)
-  Thread.sleep(2000)
-  a1 ! PoisonPill // TODO send PoisonPill only
-  a2 ! PoisonPill
-  broker ! PoisonPill
-  env ! PoisonPill
-  system.terminate()
-  Await.result(system.whenTerminated, 5.seconds)
+  // initiate a discrete log group
+  // (in this case the OpenSSL implementation of the elliptic curve group K-233)
+  val dlog: DlogGroup = new OpenSSLDlogECF2m("K-233")
+  val random: SecureRandom = new SecureRandom()
+
+  // get the group generator and order
+  val g: GroupElement = dlog.getGenerator()
+  val q: BigInteger = dlog.getOrder()
+  val qMinusOne: BigInteger = q.subtract(BigInteger.ONE)
+
+  // create a random exponent r
+  val r: BigInteger = BigIntegers.createRandomInRange(BigInteger.ZERO, qMinusOne, random)
+
+  // exponentiate g in r to receive a new group element
+  val g1: GroupElement = dlog.exponentiate(g, r)
+  // create a random group element
+  val h: GroupElement = dlog.createRandomElement()
+  // multiply elements
+  val gMult: GroupElement = dlog.multiplyGroupElements(g1, h)
+
+  println(">>>> " + gMult)
 
 }
 
+// object HelloWorld extends App {
 
-// protected def resolveLoggingActor(): Future[ActorRef] = {
-//   val config = ConfigFactory.load()
-//   val actorPath: ActorPath = ActorPath.fromString(config.getString("iohk.logging.actor-path"))
-//   val maxResolveTime: FiniteDuration = FiniteDuration(config.getDuration("iohk.logging.max-resolve-time", MILLISECONDS), MILLISECONDS)
-//   context.actorSelection(actorPath).resolveOne(maxResolveTime)
+//   import Data._
+
+//   println("START")
+//   val system = ActorSystem("dj-actor-system", ConfigFactory.load(config))
+//   val env = system.actorOf(Props[Env], "logging-actor")
+//   val broker = system.actorOf(Props[Broker with LoggingInterceptor], "broker")
+//   val a1 = system.actorOf(Props(new Client(() => 7) with LoggingInterceptor), "client-1")
+//   val a2 = system.actorOf(Props(new Client(() => 8) with LoggingInterceptor), "client-2")
+//   broker ! Initialize(a1, a2)
+//   Thread.sleep(2000)
+//   a1 ! PoisonPill
+//   a2 ! PoisonPill
+//   broker ! PoisonPill
+//   env ! PoisonPill
+//   system.terminate()
+//   Await.result(system.whenTerminated, 5.seconds)
+
 // }
-
-// protected lazy val loggingActor: Future[ActorRef] = resolveLoggingActor()
