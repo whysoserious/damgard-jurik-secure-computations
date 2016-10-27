@@ -10,6 +10,12 @@ CLOSED: [2016-10-21 ptk 15:03]
 ** TODO communication chart
 ** TODO nice characters in source code
 ** TODO badges in README.md
+** TODO Submit bug to scapi
+*** clang -> gcc
+*** compilation flags on El Capitan
+*** comment out code in submodule (submit bug to that project as well)
+*** scapi jar does not compile (but can be found in assets!)
+*** manually install jni extensions
 * Links
 http://scapi.readthedocs.io/en/latest/mid_layer/asymmetric_enc.html#damgard-jurik-encryption-scheme
 http://scapi.readthedocs.io/en/latest/interactive_layer/sigma_protocols.html

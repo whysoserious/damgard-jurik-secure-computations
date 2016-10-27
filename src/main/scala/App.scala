@@ -4,6 +4,10 @@ import akka.actor.{ Actor, ActorLogging, ActorPath, ActorRef, ActorSelection, Ac
 import akka.actor.ActorSystem
 import akka.contrib.pattern.ReceivePipeline.Inner
 import com.typesafe.config.ConfigFactory
+import edu.biu.scapi.midLayer.asymmetricCrypto.encryption.{ DJKeyGenParameterSpec, DamgardJurikEnc, ScDamgardJurikEnc }
+import edu.biu.scapi.midLayer.ciphertext.AsymmetricCiphertext
+import edu.biu.scapi.midLayer.plaintext.{ BigIntegerPlainText, Plaintext }
+import java.security.KeyPair
 import java.util.concurrent.TimeUnit.MILLISECONDS
 // import com.github.nscala_time.time.Imports._
 import scala.annotation.tailrec
@@ -105,31 +109,74 @@ object Data {
 
 object HelloWorld extends App {
 
-  println(">>>>>>>>" + System.getProperty("java.library.path"))
+  val senderPair: KeyPair = (new ScDamgardJurikEnc()).generateKey(new DJKeyGenParameterSpec(128, 40))
 
-  // initiate a discrete log group
-  // (in this case the OpenSSL implementation of the elliptic curve group K-233)
-  val dlog: DlogGroup = new OpenSSLDlogECF2m("K-233")
-  val random: SecureRandom = new SecureRandom()
+  val encryptor: DamgardJurikEnc = new ScDamgardJurikEnc()
+  val pair: KeyPair = encryptor.generateKey(new DJKeyGenParameterSpec(128, 40))
+  encryptor.setKey(pair.getPublic(), pair.getPrivate())
+  val plainText: BigIntegerPlainText = new BigIntegerPlainText(new BigInteger("3"))
+  val ciphertext: AsymmetricCiphertext = encryptor.encrypt(plainText)
+  val decryptedText: BigIntegerPlainText = encryptor.decrypt(ciphertext).asInstanceOf[BigIntegerPlainText]
 
-  // get the group generator and order
-  val g: GroupElement = dlog.getGenerator()
-  val q: BigInteger = dlog.getOrder()
-  val qMinusOne: BigInteger = q.subtract(BigInteger.ONE)
+  println(s">>> PLAIN:     $plainText")
+  println(s">>> CIPHER:    $ciphertext")
+  println(s">>> DECRYPTED: $decryptedText")
 
-  // create a random exponent r
-  val r: BigInteger = BigIntegers.createRandomInRange(BigInteger.ZERO, qMinusOne, random)
-
-  // exponentiate g in r to receive a new group element
-  val g1: GroupElement = dlog.exponentiate(g, r)
-  // create a random group element
-  val h: GroupElement = dlog.createRandomElement()
-  // multiply elements
-  val gMult: GroupElement = dlog.multiplyGroupElements(g1, h)
-
-  println(">>>> " + gMult)
 
 }
+
+// object HelloWorld extends App {
+
+//   // sender
+//   val encryptor: DamgardJurikEnc = new ScDamgardJurikEnc()
+//   val senderPair: KeyPair = encryptor.generateKey(new DJKeyGenParameterSpec(128, 40))
+
+//   val receiverPair: KeyPair = encryptor.generateKey(new DJKeyGenParameterSpec(128, 40))
+//   encryptor.setKey(receiverPair.getPublic(), senderPair.getPrivate())
+//   val plainText: BigIntegerPlainText = new BigIntegerPlainText(new BigInteger("3"))
+//   val ciphertext: AsymmetricCiphertext = encryptor.encrypt(plainText)
+
+//   // receiver
+
+//   val encryptor2: DamgardJurikEnc = new ScDamgardJurikEnc()
+//   encryptor2.setKey(senderPair.getPublic(), receiverPair.getPrivate())
+//   val decryptedText: BigIntegerPlainText = encryptor2.decrypt(ciphertext).asInstanceOf[BigIntegerPlainText]
+//   val element: BigInteger = decryptedText.getX()
+
+//   val x = new BigInteger("3")
+//   println(s">>> BI: $plainText")
+//   println(s">>> DT: $decryptedText")
+//   println(s">>> EL: $element")
+
+// }
+
+// object HelloWorld extends App {
+
+//   println(">>>>>>>>" + System.getProperty("java.library.path"))
+
+//   // initiate a discrete log group
+//   // (in this case the OpenSSL implementation of the elliptic curve group K-233)
+//   val dlog: DlogGroup = new OpenSSLDlogECF2m("K-233")
+//   val random: SecureRandom = new SecureRandom()
+
+//   // get the group generator and order
+//   val g: GroupElement = dlog.getGenerator()
+//   val q: BigInteger = dlog.getOrder()
+//   val qMinusOne: BigInteger = q.subtract(BigInteger.ONE)
+
+//   // create a random exponent r
+//   val r: BigInteger = BigIntegers.createRandomInRange(BigInteger.ZERO, qMinusOne, random)
+
+//   // exponentiate g in r to receive a new group element
+//   val g1: GroupElement = dlog.exponentiate(g, r)
+//   // create a random group element
+//   val h: GroupElement = dlog.createRandomElement()
+//   // multiply elements
+//   val gMult: GroupElement = dlog.multiplyGroupElements(g1, h)
+
+//   println(">>>> " + gMult)
+
+// }
 
 // object HelloWorld extends App {
 
