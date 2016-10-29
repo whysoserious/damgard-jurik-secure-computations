@@ -16,6 +16,7 @@ CLOSED: [2016-10-21 ptk 15:03]
 *** comment out code in submodule (submit bug to that project as well)
 *** scapi jar does not compile (but can be found in assets!)
 *** manually install jni extensions
+** TODO docs
 * Links
 http://scapi.readthedocs.io/en/latest/mid_layer/asymmetric_enc.html#damgard-jurik-encryption-scheme
 http://scapi.readthedocs.io/en/latest/interactive_layer/sigma_protocols.html

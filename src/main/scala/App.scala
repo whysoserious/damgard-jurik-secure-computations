@@ -4,9 +4,11 @@ import akka.actor.{ Actor, ActorLogging, ActorPath, ActorRef, ActorSelection, Ac
 import akka.actor.ActorSystem
 import akka.contrib.pattern.ReceivePipeline.Inner
 import com.typesafe.config.ConfigFactory
-import edu.biu.scapi.midLayer.asymmetricCrypto.encryption.{ DJKeyGenParameterSpec, DamgardJurikEnc, ScDamgardJurikEnc }
+import edu.biu.scapi.midLayer.asymmetricCrypto.encryption.{ DJKeyGenParameterSpec, DamgardJurikEnc, ScDamgardJurikEnc, ScElGamalOnGroupElement }
+import edu.biu.scapi.midLayer.asymmetricCrypto.keys.ScDamgardJurikPublicKey
 import edu.biu.scapi.midLayer.ciphertext.AsymmetricCiphertext
-import edu.biu.scapi.midLayer.plaintext.{ BigIntegerPlainText, Plaintext }
+import edu.biu.scapi.midLayer.plaintext.{ BigIntegerPlainText, GroupElementPlaintext, Plaintext }
+import edu.biu.scapi.primitives.dlog.miracl.MiraclDlogECFp
 import java.security.KeyPair
 import java.util.concurrent.TimeUnit.MILLISECONDS
 // import com.github.nscala_time.time.Imports._
@@ -26,11 +28,13 @@ import edu.biu.scapi.primitives.dlog.openSSL.OpenSSLDlogECF2m;
 
 import java.math.BigInteger
 import java.security.SecureRandom
+import java.security.PublicKey
+import java.security.Key
 object Data {
 
-  trait Protocol
+  trait ActorMessage
 
-  case class LogMessage[Msg <: Protocol](msg: Msg, sndr: ActorPath, rcvr: ActorPath)
+  case class LogMessage[Msg <: ActorMessage](msg: Msg, sndr: ActorPath, rcvr: ActorPath)
 
   class Env extends Actor with ActorLogging with LoggingInterceptor {
 
@@ -45,59 +49,117 @@ object Data {
     protected lazy val loggingActor: ActorSelection = context.actorSelection("/user/logging-actor")
 
     pipelineOuter {
-      case msg: Protocol =>
+      case msg: ActorMessage =>
         loggingActor ! LogMessage(msg, sender().path, self.path)
         Inner(msg)
     }
 
   }
 
-  case object Abort extends Protocol
-  case object Invite extends Protocol
-  case class Announce(numbers: Seq[EncryptedNumber]) extends Protocol
-  case class Result(number: EncryptedNumber) extends Protocol
+  trait UserMessage extends ActorMessage
+  case object Register extends UserMessage
+  case class EncryptedNumber(n: AsymmetricCiphertext) extends ActorMessage
 
-  class Client(number: () => Int) extends Actor { // TODO () => Int?
+  trait BrokerMessage extends ActorMessage
+  case class Invite(publicKey: ScDamgardJurikPublicKey) extends BrokerMessage
+  case class EncryptedNumbers(n1: AsymmetricCiphertext, n2: AsymmetricCiphertext) extends BrokerMessage
+  case class EncryptedResult(n: AsymmetricCiphertext) extends BrokerMessage
+  case object Abort extends BrokerMessage
 
-    def receive = {
-      case Invite => sender() ! EncryptedNumber(number())
+  class Client(number: BigInteger, brokerPath: ActorPath, resolveTimeout: FiniteDuration) extends Actor {
+
+    val broker: ActorSelection = context.actorSelection(brokerPath)
+
+    var cA: Option[AsymmetricCiphertext] = None
+    var cB: Option[AsymmetricCiphertext] = None
+    var cC: Option[AsymmetricCiphertext] = None
+
+    implicit val ec = context.dispatcher
+
+    override def preStart = {
+      broker ! Register
+    }
+
+    override def receive = {
+      case Invite(publicKey: ScDamgardJurikPublicKey) if cA.isEmpty =>
+        val cipherText: AsymmetricCiphertext = encryptNumber(number, publicKey)
+        cA = Some(cipherText)
+        broker ! EncryptedNumber(cipherText)
+      case EncryptedNumbers(n1: AsymmetricCiphertext, n2: AsymmetricCiphertext) if cB.isEmpty && Some(n1).equals(cA) =>
+        cB = Some(n2)
+      case EncryptedNumbers(n1: AsymmetricCiphertext, n2: AsymmetricCiphertext) if cB.isEmpty && Some(n2).equals(cA) =>
+        cB = Some(n1)
+      case EncryptedResult(n: AsymmetricCiphertext) if cC.isEmpty =>
+        cC = Some(n)
       case Abort =>
-      case Announce(numbers) =>
-      case Result(number) =>
+        self ! PoisonPill
+      case x =>
+        println(">>> " + x)
+        unhandled(x)
+    }
+
+    def encryptNumber(n: BigInteger, publicKey: ScDamgardJurikPublicKey): AsymmetricCiphertext = {
+      val encryptor: DamgardJurikEnc = new ScDamgardJurikEnc()
+      encryptor.setKey(publicKey)
+      encryptor.encrypt(new BigIntegerPlainText(n))
     }
 
   }
 
-  case class Initialize(clients1: ActorRef, client2: ActorRef) extends Protocol // TODO seq or pair?
-  case class EncryptedNumber(n: Int) extends Protocol
+  case object Broker {
 
-  class Broker extends Actor with LoggingInterceptor {
+    case class ClientData(ref: ActorRef, number: Option[AsymmetricCiphertext])
 
-    var clients: Map[ActorRef, Option[EncryptedNumber]] = Map()
+    private case object MultiplyNumbers extends BrokerMessage
 
-    def receive = {
-      case Initialize(client1, client2) =>
-        clients = Map(client1 -> None, client2 -> None)
-        clients.keys.foreach(_ ! Invite)
-      case en: EncryptedNumber if clients.contains(sender()) =>
-        clients = clients.updated(sender(), Some(en))
-        tryAnnounceNumbers(Seq(clients.values.toSeq: _*)) map { numbers =>
-          clients.keys.foreach(_ ! Result(EncryptedNumber(666)))
+  }
+
+  class Broker(modulusLength: Int = 128, certainty: Int = 40) extends Actor with LoggingInterceptor {
+
+    import Broker._
+
+    val encryptor: DamgardJurikEnc = new ScDamgardJurikEnc()
+    val keyPair: KeyPair = encryptor.generateKey(new DJKeyGenParameterSpec(modulusLength, certainty))
+
+    var client1: Option[ClientData] = None
+    var client2: Option[ClientData] = None
+    var encryptedProduct: Option[AsymmetricCiphertext] = None
+
+    override def receive = {
+      case Register =>
+        val publicKey: ScDamgardJurikPublicKey = keyPair.getPublic().asInstanceOf[ScDamgardJurikPublicKey]
+        sender() ! Invite(publicKey)
+        val clientData = Some(ClientData(sender(), None))
+                             (client1, client2) match { // TODO fix formatting
+          case (None, _) => client1 = clientData
+          case (Some(_), None) => client2 = clientData
+          case _ =>
         }
-    }
+      case EncryptedNumber(ciphertext: AsymmetricCiphertext) =>
+        (client1, client2) match {
+          case (Some(clientData @ ClientData(sndr, None)), _) if sndr.equals(sender()) =>
+            client1 = Some(clientData.copy(number = Some(ciphertext)))
+          case (_, Some(clientData @ ClientData(sndr, None))) if sndr.equals(sender()) =>
+            client2 = Some(clientData.copy(number = Some(ciphertext)))
+            self ! MultiplyNumbers
+        }
+      case MultiplyNumbers =>
+        (client1, client2) match {
+          case (Some(ClientData(sndr1, Some(ciphertext1))), Some(ClientData(sndr2, Some(ciphertext2)))) if encryptedProduct.isEmpty =>
+            encryptor.setKey(keyPair.getPublic(), keyPair.getPrivate())
+            val n1: BigInteger = encryptor.decrypt(ciphertext1).asInstanceOf[BigIntegerPlainText].getX
+            val n2: BigInteger = encryptor.decrypt(ciphertext2).asInstanceOf[BigIntegerPlainText].getX
+            // encryptor.setKey(keyPair.getPublic() // TODO do we need that?
+            val plaintext: BigIntegerPlainText = new BigIntegerPlainText(n1 multiply n2)
+            val ciphertext = encryptor.encrypt(plaintext)
+            encryptedProduct = Some(ciphertext)
+            sndr1 ! EncryptedResult(ciphertext)
+            sndr2 ! EncryptedResult(ciphertext)
+          case _ =>
+        }
 
-    @tailrec
-    private def tryAnnounceNumbers(numbers: Seq[Option[EncryptedNumber]], acc: Seq[EncryptedNumber] = Seq()): Option[Seq[EncryptedNumber]] = {
-      numbers match {
-        case Nil if acc.size == clients.size =>
-          val msg = Announce(acc)
-          clients.keys.foreach(_ ! msg)
-          Some(acc)
-        case Some(en) :: tail =>
-          tryAnnounceNumbers(tail, acc :+ en)
-        case _ =>
-          None
-      }
+      case x =>
+        unhandled(x)
     }
 
   }
@@ -109,21 +171,104 @@ object Data {
 
 object HelloWorld extends App {
 
-  val senderPair: KeyPair = (new ScDamgardJurikEnc()).generateKey(new DJKeyGenParameterSpec(128, 40))
+  import Data._
 
-  val encryptor: DamgardJurikEnc = new ScDamgardJurikEnc()
-  val pair: KeyPair = encryptor.generateKey(new DJKeyGenParameterSpec(128, 40))
-  encryptor.setKey(pair.getPublic(), pair.getPrivate())
-  val plainText: BigIntegerPlainText = new BigIntegerPlainText(new BigInteger("3"))
-  val ciphertext: AsymmetricCiphertext = encryptor.encrypt(plainText)
-  val decryptedText: BigIntegerPlainText = encryptor.decrypt(ciphertext).asInstanceOf[BigIntegerPlainText]
-
-  println(s">>> PLAIN:     $plainText")
-  println(s">>> CIPHER:    $ciphertext")
-  println(s">>> DECRYPTED: $decryptedText")
-
+  println("START")
+  val system = ActorSystem("dj-actor-system", ConfigFactory.load(config))
+  val env = system.actorOf(Props[Env], "logging-actor")
+  val broker = system.actorOf(Props(new Broker() with LoggingInterceptor), "caroll")
+  val a1 = system.actorOf(Props(new Client(new BigInteger("7"), broker.path, 1.second) with LoggingInterceptor), "alice")
+  val a2 = system.actorOf(Props(new Client(new BigInteger("8"), broker.path, 1.second) with LoggingInterceptor), "bob")
+  Thread.sleep(2000)
+  a1 ! PoisonPill
+  a2 ! PoisonPill
+  broker ! PoisonPill
+  env ! PoisonPill
+  system.terminate()
+  Await.result(system.whenTerminated, 5.seconds)
 
 }
+
+// OBJECT HelloWorld extends App {
+//   //TODO keys in plain text
+
+
+
+//   val encryptor: DamgardJurikEnc = new ScDamgardJurikEnc()
+//   val senderPair: KeyPair = encryptor.generateKey(new DJKeyGenParameterSpec(128, 40))
+//   val receiverPair: KeyPair = encryptor.generateKey(new DJKeyGenParameterSpec(128, 40))
+
+//   //sender
+//   println(">>> " + receiverPair.getPublic().asInstanceOf[ScDamgardJurikPublicKey])
+//   val n = new BigInteger("3")
+//   encryptor.setKey(receiverPair.getPublic())
+//   val plainText: BigIntegerPlainText = new BigIntegerPlainText(n)
+//   val ciphertext: AsymmetricCiphertext = encryptor.encrypt(plainText)
+
+//   //receiver
+//   encryptor.setKey(receiverPair.getPublic(), receiverPair.getPrivate())
+//   val decryptedText: BigIntegerPlainText = encryptor.decrypt(ciphertext).asInstanceOf[BigIntegerPlainText]
+
+//   println(s">>> PLAIN:     $plainText")
+//   println(s">>> CIPHER:    $ciphertext")
+//   println(s">>> DECRYPTED: $decryptedText")
+
+
+// }
+
+
+// object HelloWorld extends App {
+
+//   println(System.getProperty("java.library.path"))
+
+//   val dlog: DlogGroup = new MiraclDlogECFp();
+//   val elGamal = new ScElGamalOnGroupElement(dlog)
+
+//   val senderPair: KeyPair = elGamal.generateKey()
+//   val receiverPair: KeyPair = elGamal.generateKey()
+
+//   //sender
+//   val n = new BigInteger("3")
+//   elGamal.setKey(receiverPair.getPublic(), senderPair.getPrivate())
+//   val plainText: Plaintext = new GroupElementPlaintext(dlog.createRandomElement())
+//   val ciphertext: AsymmetricCiphertext = elGamal.encrypt(plainText)
+
+//   //receiver
+//   elGamal.setKey(senderPair.getPublic(), receiverPair.getPrivate())
+//   val decryptedText: GroupElement = elGamal.decrypt(ciphertext).asInstanceOf[GroupElementPlaintext].getElement
+
+//   println(s">>> PLAIN:     $plainText")
+//   println(s">>> CIPHER:    $ciphertext")
+//   println(s">>> DECRYPTED: $decryptedText")
+
+
+// }
+
+// object HelloWorld extends App {
+//   //TODO keys in plain text
+
+
+
+//   val encryptor: DamgardJurikEnc = new ScDamgardJurikEnc()
+//   val senderPair: KeyPair = encryptor.generateKey(new DJKeyGenParameterSpec(128, 40))
+//   val receiverPair: KeyPair = encryptor.generateKey(new DJKeyGenParameterSpec(128, 40))
+
+//   //sender
+//   val n = new BigInteger("3")
+//   encryptor.setKey(receiverPair.getPublic())
+//   val plainText: BigIntegerPlainText = new BigIntegerPlainText(n)
+//   val ciphertext: AsymmetricCiphertext = encryptor.encrypt(plainText)
+
+//   //receiver
+//   encryptor.setKey(receiverPair.getPublic(), receiverPair.getPrivate())
+//   val decryptedText: BigIntegerPlainText = encryptor.decrypt(ciphertext).asInstanceOf[BigIntegerPlainText]
+
+//   println(s">>> PLAIN:     $plainText")
+//   println(s">>> CIPHER:    $ciphertext")
+//   println(s">>> DECRYPTED: $decryptedText")
+
+
+// }
 
 // object HelloWorld extends App {
 
@@ -175,26 +320,5 @@ object HelloWorld extends App {
 //   val gMult: GroupElement = dlog.multiplyGroupElements(g1, h)
 
 //   println(">>>> " + gMult)
-
-// }
-
-// object HelloWorld extends App {
-
-//   import Data._
-
-//   println("START")
-//   val system = ActorSystem("dj-actor-system", ConfigFactory.load(config))
-//   val env = system.actorOf(Props[Env], "logging-actor")
-//   val broker = system.actorOf(Props[Broker with LoggingInterceptor], "broker")
-//   val a1 = system.actorOf(Props(new Client(() => 7) with LoggingInterceptor), "client-1")
-//   val a2 = system.actorOf(Props(new Client(() => 8) with LoggingInterceptor), "client-2")
-//   broker ! Initialize(a1, a2)
-//   Thread.sleep(2000)
-//   a1 ! PoisonPill
-//   a2 ! PoisonPill
-//   broker ! PoisonPill
-//   env ! PoisonPill
-//   system.terminate()
-//   Await.result(system.whenTerminated, 5.seconds)
 
 // }
