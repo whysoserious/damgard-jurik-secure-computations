@@ -61,28 +61,114 @@ object Data {
   sealed trait ClientMessage extends ActorMessage
   case object Register extends ClientMessage
   case class EncryptedNumber(n: BigIntegerCiphertext) extends ClientMessage
-  case object Prove extends ClientMessage
 
   sealed trait BrokerMessage extends ActorMessage
-  case class Invite(publicKey: ScDamgardJurikPublicKey) extends BrokerMessage
+  case class Invite(publicKey: DamgardJurikPublicKey) extends BrokerMessage
   case class EncryptedNumbers(n1: BigIntegerCiphertext, n2: BigIntegerCiphertext) extends BrokerMessage
   case class EncryptedResult(n: BigIntegerCiphertext) extends BrokerMessage
   case object Abort extends BrokerMessage
 
   sealed trait VerifierMessage extends ActorMessage
-  case class Challenge(challenge: Array[Byte])
+  case object Prove extends VerifierMessage
+  case class Challenge(challenge: Array[Byte]) extends VerifierMessage
+  case class ProofResult(success: Boolean) extends VerifierMessage
 
   sealed trait ProverMessage extends ActorMessage
   case class Message1(msg: SigmaProtocolMsg) extends ProverMessage
   case class Message2(msg: SigmaProtocolMsg) extends ProverMessage
 
-  class Client(number: BigInteger, brokerPath: ActorPath, resolveTimeout: FiniteDuration) extends Actor {
+  object HelloWorld2  {
+    //TODO keys in plain text
+
+    val encryptor: DamgardJurikEnc = new ScDamgardJurikEnc()
+    val keyPair: KeyPair = encryptor.generateKey(new DJKeyGenParameterSpec(128, 40))
+
+    encryptor.setKey(keyPair.getPublic())
+
+    val a = new BigInteger("3")
+    val b = new BigInteger("7")
+    val c = a multiply b
+    val cA: AsymmetricCiphertext = encryptor.encrypt(new BigIntegerPlainText(a))
+    val cB: AsymmetricCiphertext = encryptor.encrypt(new BigIntegerPlainText(b))
+
+    encryptor.setKey(keyPair.getPublic(), keyPair.getPrivate())
+    val n1: BigIntegerPlainText = encryptor.decrypt(cA).asInstanceOf[BigIntegerPlainText]
+    val n2: BigIntegerPlainText = encryptor.decrypt(cB).asInstanceOf[BigIntegerPlainText]
+
+    // encryptor.setKey(keyPair.getPublic())
+    val cC = encryptor.encrypt(new BigIntegerPlainText(n1.getX multiply n2.getX))
+
+
+    ////////////////////////
+
+    val secureRandom = new SecureRandom()
+    val publicKey: DamgardJurikPublicKey = keyPair.getPublic.asInstanceOf[DamgardJurikPublicKey]
+    val privateKey: DamgardJurikPrivateKey = keyPair.getPrivate.asInstanceOf[DamgardJurikPrivateKey]
+    val proverComputation: SigmaDJProductProverComputation = new SigmaDJProductProverComputation()
+    val proverInput: SigmaDJProductProverInput = new SigmaDJProductProverInput(publicKey,
+                                                                               cA.asInstanceOf[BigIntegerCiphertext],
+                                                                               cB.asInstanceOf[BigIntegerCiphertext],
+                                                                               cC.asInstanceOf[BigIntegerCiphertext],
+                                                                               privateKey,
+                                                                               n1,
+                                                                               n2)
+
+    val verifierComputation: SigmaDJProductVerifierComputation = new SigmaDJProductVerifierComputation()
+    verifierComputation.sampleChallenge()
+    val challenge: Array[Byte] = verifierComputation.getChallenge()
+
+
+
+    val proverMsg1: SigmaProtocolMsg = proverComputation.computeFirstMsg(proverInput)
+    val proverMsg2: SigmaProtocolMsg = proverComputation.computeSecondMsg(challenge)
+
+    val commonInput: SigmaDJProductCommonInput = new SigmaDJProductCommonInput(publicKey,
+                                                                               cA.asInstanceOf[BigIntegerCiphertext],
+                                                                               cB.asInstanceOf[BigIntegerCiphertext],
+                                                                               cC.asInstanceOf[BigIntegerCiphertext])
+
+    println(">>>: " + verifierComputation.verify(commonInput, proverMsg1, proverMsg2))
+
+  }
+
+  class Verifier(broker: ActorSelection,
+                 publicKey: DamgardJurikPublicKey,
+                 cA: BigIntegerCiphertext, cB: BigIntegerCiphertext, cC: BigIntegerCiphertext) extends Actor with LoggingInterceptor {
+
+    val verifierComputation: SigmaDJProductVerifierComputation = new SigmaDJProductVerifierComputation()
+
+    var proverMsg1: Option[SigmaProtocolMsg] = None
+
+    override def preStart = {
+      broker ! Prove
+    }
+
+    override def receive = {
+      case Message1(msg1) if proverMsg1.isEmpty =>
+        proverMsg1 = Some(msg1)
+        verifierComputation.sampleChallenge()
+        val challenge: Array[Byte] = verifierComputation.getChallenge()
+        sender() ! Challenge(challenge)
+      case Message2(msg2) if proverMsg1.isDefined  =>
+        val commonInput: SigmaDJProductCommonInput = new SigmaDJProductCommonInput(publicKey,
+                                                                                   cA.asInstanceOf[BigIntegerCiphertext],
+                                                                                   cB.asInstanceOf[BigIntegerCiphertext],
+                                                                                   cC.asInstanceOf[BigIntegerCiphertext])
+        val result: Boolean = verifierComputation.verify(commonInput, proverMsg1.get, msg2)
+        context.parent ! ProofResult(result)
+        self ! PoisonPill
+    }
+
+  }
+
+  class Client(number: BigInteger, brokerPath: ActorPath, resolveTimeout: FiniteDuration) extends Actor with ActorLogging with LoggingInterceptor {
 
     val broker: ActorSelection = context.actorSelection(brokerPath)
 
     var cA: Option[BigIntegerCiphertext] = None
     var cB: Option[BigIntegerCiphertext] = None
     var cC: Option[BigIntegerCiphertext] = None
+    var publicKey: Option[DamgardJurikPublicKey] = None
 
     implicit val ec = context.dispatcher
 
@@ -91,8 +177,9 @@ object Data {
     }
 
     override def receive = {
-      case Invite(publicKey: ScDamgardJurikPublicKey) if cA.isEmpty =>
-        val cipherText: BigIntegerCiphertext = encryptNumber(number, publicKey)
+      case Invite(pk: DamgardJurikPublicKey) if cA.isEmpty =>
+        publicKey = Some(pk)
+        val cipherText: BigIntegerCiphertext = encryptNumber(number, pk)
         cA = Some(cipherText)
         broker ! EncryptedNumber(cipherText)
       case EncryptedNumbers(n1: BigIntegerCiphertext, n2: BigIntegerCiphertext) if cB.isEmpty && Some(n1).equals(cA) =>
@@ -101,14 +188,24 @@ object Data {
         cB = Some(n1)
       case EncryptedResult(n: BigIntegerCiphertext) if cC.isEmpty =>
         cC = Some(n)
+        for {
+          a <- cA
+          b <- cB
+          c <- cC
+          pk <- publicKey
+        } {
+          context.actorOf(Props(new Verifier(broker, pk, a, b, c)), "verifier")
+        }
+      case ProofResult(success) =>
+        log.info(s"Proof result: $success")
       case Abort =>
         self ! PoisonPill
       case x =>
-        println(">>> " + x)
+        println(">>> " + x) // TODO remove
         unhandled(x)
     }
 
-    def encryptNumber(n: BigInteger, publicKey: ScDamgardJurikPublicKey): BigIntegerCiphertext = { // TODO use
+    def encryptNumber(n: BigInteger, publicKey: DamgardJurikPublicKey): BigIntegerCiphertext = { // TODO use
       val encryptor: DamgardJurikEnc = new ScDamgardJurikEnc()
       encryptor.setKey(publicKey)
       encryptor.encrypt(new BigIntegerPlainText(n)).asInstanceOf[BigIntegerCiphertext]
@@ -124,7 +221,7 @@ object Data {
 
   }
 
-  class Broker(modulusLength: Int = 10, certainty: Int = 40) extends Actor with LoggingInterceptor {
+  class Broker(modulusLength: Int = 128, certainty: Int = 40) extends Actor with LoggingInterceptor {
 
     import Broker._
 
@@ -149,9 +246,12 @@ object Data {
         (client1, client2) match {
           case (Some(clientData @ ClientData(sndr, None)), _) if sndr.equals(sender()) =>
             client1 = Some(clientData.copy(number = Some(ciphertext)))
-          case (_, Some(clientData @ ClientData(sndr, None))) if sndr.equals(sender()) =>
+          case (Some(ClientData(sndr1, Some(n1))), Some(clientData @ ClientData(sndr2, None))) if sndr2.equals(sender()) =>
             client2 = Some(clientData.copy(number = Some(ciphertext)))
+            sndr1 ! EncryptedNumbers(n1: BigIntegerCiphertext, ciphertext)
+            sndr2 ! EncryptedNumbers(n1: BigIntegerCiphertext, ciphertext)
             self ! MultiplyNumbers
+
         }
       case MultiplyNumbers =>
         (client1, client2) match {
@@ -159,7 +259,6 @@ object Data {
             encryptor.setKey(keyPair.getPublic(), keyPair.getPrivate())
             val n1: BigInteger = encryptor.decrypt(ciphertext1).asInstanceOf[BigIntegerPlainText].getX
             val n2: BigInteger = encryptor.decrypt(ciphertext2).asInstanceOf[BigIntegerPlainText].getX
-            // encryptor.setKey(keyPair.getPublic() // TODO do we need that?
             val plaintext: BigIntegerPlainText = new BigIntegerPlainText(n1 multiply n2)
             val ciphertext = encryptor.encrypt(plaintext).asInstanceOf[BigIntegerCiphertext]
             encryptedProduct = Some(ciphertext)
@@ -167,7 +266,6 @@ object Data {
             sndr2 ! EncryptedResult(ciphertext)
           case _ =>
         }
-
       case x =>
         unhandled(x)
     }
@@ -179,60 +277,6 @@ object Data {
        |iohk.logging.max-resolve-time = 1 second""".stripMargin)
 }
 
-// object HelloWorld extends App {
-//   //TODO keys in plain text
-
-//   val encryptor: DamgardJurikEnc = new ScDamgardJurikEnc()
-//   val keyPair: KeyPair = encryptor.generateKey(new DJKeyGenParameterSpec(128, 40))
-
-//   encryptor.setKey(keyPair.getPublic())
-
-//   val a = new BigInteger("3")
-//   val b = new BigInteger("7")
-//   val c = a multiply b
-//   val cA: AsymmetricCiphertext = encryptor.encrypt(new BigIntegerPlainText(a))
-//   val cB: AsymmetricCiphertext = encryptor.encrypt(new BigIntegerPlainText(b))
-
-//   encryptor.setKey(keyPair.getPublic(), keyPair.getPrivate())
-//   val n1: BigIntegerPlainText = encryptor.decrypt(cA).asInstanceOf[BigIntegerPlainText]
-//   val n2: BigIntegerPlainText = encryptor.decrypt(cB).asInstanceOf[BigIntegerPlainText]
-
-//   // encryptor.setKey(keyPair.getPublic())
-//   val cC = encryptor.encrypt(new BigIntegerPlainText(n1.getX multiply n2.getX))
-
-
-//   ////////////////////////
-
-//   val secureRandom = new SecureRandom()
-//   val publicKey: DamgardJurikPublicKey = keyPair.getPublic.asInstanceOf[DamgardJurikPublicKey]
-//   val privateKey: DamgardJurikPrivateKey = keyPair.getPrivate.asInstanceOf[DamgardJurikPrivateKey]
-//   val proverComputation: SigmaDJProductProverComputation = new SigmaDJProductProverComputation()
-//   val proverInput: SigmaDJProductProverInput = new SigmaDJProductProverInput(publicKey,
-//                                                                              cA.asInstanceOf[BigIntegerCiphertext],
-//                                                                              cB.asInstanceOf[BigIntegerCiphertext],
-//                                                                              cC.asInstanceOf[BigIntegerCiphertext],
-//                                                                              privateKey,
-//                                                                              n1,
-//                                                                              n2)
-
-//   val verifierComputation: SigmaDJProductVerifierComputation = new SigmaDJProductVerifierComputation()
-//   verifierComputation.sampleChallenge()
-//   val challenge: Array[Byte] = verifierComputation.getChallenge()
-
-
-
-//   val proverMsg1: SigmaProtocolMsg = proverComputation.computeFirstMsg(proverInput)
-//   val proverMsg2: SigmaProtocolMsg = proverComputation.computeSecondMsg(challenge)
-
-//   val commonInput: SigmaDJProductCommonInput = new SigmaDJProductCommonInput(publicKey,
-//                                                                              cA.asInstanceOf[BigIntegerCiphertext],
-//                                                                              cB.asInstanceOf[BigIntegerCiphertext],
-//                                                                              cC.asInstanceOf[BigIntegerCiphertext])
-
-//   println(">>>: " + verifierComputation.verify(commonInput, proverMsg1, proverMsg2))
-
-// }
-
 object HelloWorld extends App {
 
   import Data._
@@ -241,8 +285,8 @@ object HelloWorld extends App {
   val system = ActorSystem("dj-actor-system", ConfigFactory.load(config))
   val env = system.actorOf(Props[Env], "logging-actor")
   val broker = system.actorOf(Props(new Broker() with LoggingInterceptor), "caroll")
-  val a1 = system.actorOf(Props(new Client(new BigInteger("7"), broker.path, 1.second) with LoggingInterceptor), "alice")
-  val a2 = system.actorOf(Props(new Client(new BigInteger("8"), broker.path, 1.second) with LoggingInterceptor), "bob")
+  val a1 = system.actorOf(Props(new Client(new BigInteger("7"), broker.path, 1.second)), "alice")
+  val a2 = system.actorOf(Props(new Client(new BigInteger("8"), broker.path, 1.second)), "bob")
   Thread.sleep(2000)
   a1 ! PoisonPill
   a2 ! PoisonPill
