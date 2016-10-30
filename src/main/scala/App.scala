@@ -4,9 +4,11 @@ import akka.actor.{ Actor, ActorLogging, ActorPath, ActorRef, ActorSelection, Ac
 import akka.actor.ActorSystem
 import akka.contrib.pattern.ReceivePipeline.Inner
 import com.typesafe.config.ConfigFactory
+import edu.biu.scapi.interactiveMidProtocols.sigmaProtocol.damgardJurikProduct.{ SigmaDJProductCommonInput, SigmaDJProductProverComputation, SigmaDJProductProverInput, SigmaDJProductVerifierComputation }
+import edu.biu.scapi.interactiveMidProtocols.sigmaProtocol.utility.SigmaProtocolMsg
 import edu.biu.scapi.midLayer.asymmetricCrypto.encryption.{ DJKeyGenParameterSpec, DamgardJurikEnc, ScDamgardJurikEnc, ScElGamalOnGroupElement }
-import edu.biu.scapi.midLayer.asymmetricCrypto.keys.ScDamgardJurikPublicKey
-import edu.biu.scapi.midLayer.ciphertext.AsymmetricCiphertext
+import edu.biu.scapi.midLayer.asymmetricCrypto.keys.{ DamgardJurikPrivateKey, DamgardJurikPublicKey, ScDamgardJurikPrivateKey, ScDamgardJurikPublicKey }
+import edu.biu.scapi.midLayer.ciphertext.{ AsymmetricCiphertext, BigIntegerCiphertext }
 import edu.biu.scapi.midLayer.plaintext.{ BigIntegerPlainText, GroupElementPlaintext, Plaintext }
 import edu.biu.scapi.primitives.dlog.miracl.MiraclDlogECFp
 import java.security.KeyPair
@@ -56,23 +58,31 @@ object Data {
 
   }
 
-  trait UserMessage extends ActorMessage
-  case object Register extends UserMessage
-  case class EncryptedNumber(n: AsymmetricCiphertext) extends ActorMessage
+  sealed trait ClientMessage extends ActorMessage
+  case object Register extends ClientMessage
+  case class EncryptedNumber(n: BigIntegerCiphertext) extends ClientMessage
+  case object Prove extends ClientMessage
 
-  trait BrokerMessage extends ActorMessage
+  sealed trait BrokerMessage extends ActorMessage
   case class Invite(publicKey: ScDamgardJurikPublicKey) extends BrokerMessage
-  case class EncryptedNumbers(n1: AsymmetricCiphertext, n2: AsymmetricCiphertext) extends BrokerMessage
-  case class EncryptedResult(n: AsymmetricCiphertext) extends BrokerMessage
+  case class EncryptedNumbers(n1: BigIntegerCiphertext, n2: BigIntegerCiphertext) extends BrokerMessage
+  case class EncryptedResult(n: BigIntegerCiphertext) extends BrokerMessage
   case object Abort extends BrokerMessage
+
+  sealed trait VerifierMessage extends ActorMessage
+  case class Challenge(challenge: Array[Byte])
+
+  sealed trait ProverMessage extends ActorMessage
+  case class Message1(msg: SigmaProtocolMsg) extends ProverMessage
+  case class Message2(msg: SigmaProtocolMsg) extends ProverMessage
 
   class Client(number: BigInteger, brokerPath: ActorPath, resolveTimeout: FiniteDuration) extends Actor {
 
     val broker: ActorSelection = context.actorSelection(brokerPath)
 
-    var cA: Option[AsymmetricCiphertext] = None
-    var cB: Option[AsymmetricCiphertext] = None
-    var cC: Option[AsymmetricCiphertext] = None
+    var cA: Option[BigIntegerCiphertext] = None
+    var cB: Option[BigIntegerCiphertext] = None
+    var cC: Option[BigIntegerCiphertext] = None
 
     implicit val ec = context.dispatcher
 
@@ -82,14 +92,14 @@ object Data {
 
     override def receive = {
       case Invite(publicKey: ScDamgardJurikPublicKey) if cA.isEmpty =>
-        val cipherText: AsymmetricCiphertext = encryptNumber(number, publicKey)
+        val cipherText: BigIntegerCiphertext = encryptNumber(number, publicKey)
         cA = Some(cipherText)
         broker ! EncryptedNumber(cipherText)
-      case EncryptedNumbers(n1: AsymmetricCiphertext, n2: AsymmetricCiphertext) if cB.isEmpty && Some(n1).equals(cA) =>
+      case EncryptedNumbers(n1: BigIntegerCiphertext, n2: BigIntegerCiphertext) if cB.isEmpty && Some(n1).equals(cA) =>
         cB = Some(n2)
-      case EncryptedNumbers(n1: AsymmetricCiphertext, n2: AsymmetricCiphertext) if cB.isEmpty && Some(n2).equals(cA) =>
+      case EncryptedNumbers(n1: BigIntegerCiphertext, n2: BigIntegerCiphertext) if cB.isEmpty && Some(n2).equals(cA) =>
         cB = Some(n1)
-      case EncryptedResult(n: AsymmetricCiphertext) if cC.isEmpty =>
+      case EncryptedResult(n: BigIntegerCiphertext) if cC.isEmpty =>
         cC = Some(n)
       case Abort =>
         self ! PoisonPill
@@ -98,23 +108,23 @@ object Data {
         unhandled(x)
     }
 
-    def encryptNumber(n: BigInteger, publicKey: ScDamgardJurikPublicKey): AsymmetricCiphertext = {
+    def encryptNumber(n: BigInteger, publicKey: ScDamgardJurikPublicKey): BigIntegerCiphertext = { // TODO use
       val encryptor: DamgardJurikEnc = new ScDamgardJurikEnc()
       encryptor.setKey(publicKey)
-      encryptor.encrypt(new BigIntegerPlainText(n))
+      encryptor.encrypt(new BigIntegerPlainText(n)).asInstanceOf[BigIntegerCiphertext]
     }
 
   }
 
   case object Broker {
 
-    case class ClientData(ref: ActorRef, number: Option[AsymmetricCiphertext])
+    case class ClientData(ref: ActorRef, number: Option[BigIntegerCiphertext])
 
     private case object MultiplyNumbers extends BrokerMessage
 
   }
 
-  class Broker(modulusLength: Int = 128, certainty: Int = 40) extends Actor with LoggingInterceptor {
+  class Broker(modulusLength: Int = 10, certainty: Int = 40) extends Actor with LoggingInterceptor {
 
     import Broker._
 
@@ -123,7 +133,7 @@ object Data {
 
     var client1: Option[ClientData] = None
     var client2: Option[ClientData] = None
-    var encryptedProduct: Option[AsymmetricCiphertext] = None
+    var encryptedProduct: Option[BigIntegerCiphertext] = None
 
     override def receive = {
       case Register =>
@@ -135,7 +145,7 @@ object Data {
           case (Some(_), None) => client2 = clientData
           case _ =>
         }
-      case EncryptedNumber(ciphertext: AsymmetricCiphertext) =>
+      case EncryptedNumber(ciphertext: BigIntegerCiphertext) =>
         (client1, client2) match {
           case (Some(clientData @ ClientData(sndr, None)), _) if sndr.equals(sender()) =>
             client1 = Some(clientData.copy(number = Some(ciphertext)))
@@ -151,7 +161,7 @@ object Data {
             val n2: BigInteger = encryptor.decrypt(ciphertext2).asInstanceOf[BigIntegerPlainText].getX
             // encryptor.setKey(keyPair.getPublic() // TODO do we need that?
             val plaintext: BigIntegerPlainText = new BigIntegerPlainText(n1 multiply n2)
-            val ciphertext = encryptor.encrypt(plaintext)
+            val ciphertext = encryptor.encrypt(plaintext).asInstanceOf[BigIntegerCiphertext]
             encryptedProduct = Some(ciphertext)
             sndr1 ! EncryptedResult(ciphertext)
             sndr2 ! EncryptedResult(ciphertext)
@@ -168,6 +178,60 @@ object Data {
     """|iohk.logging.actor-name = "logging-actor"
        |iohk.logging.max-resolve-time = 1 second""".stripMargin)
 }
+
+// object HelloWorld extends App {
+//   //TODO keys in plain text
+
+//   val encryptor: DamgardJurikEnc = new ScDamgardJurikEnc()
+//   val keyPair: KeyPair = encryptor.generateKey(new DJKeyGenParameterSpec(128, 40))
+
+//   encryptor.setKey(keyPair.getPublic())
+
+//   val a = new BigInteger("3")
+//   val b = new BigInteger("7")
+//   val c = a multiply b
+//   val cA: AsymmetricCiphertext = encryptor.encrypt(new BigIntegerPlainText(a))
+//   val cB: AsymmetricCiphertext = encryptor.encrypt(new BigIntegerPlainText(b))
+
+//   encryptor.setKey(keyPair.getPublic(), keyPair.getPrivate())
+//   val n1: BigIntegerPlainText = encryptor.decrypt(cA).asInstanceOf[BigIntegerPlainText]
+//   val n2: BigIntegerPlainText = encryptor.decrypt(cB).asInstanceOf[BigIntegerPlainText]
+
+//   // encryptor.setKey(keyPair.getPublic())
+//   val cC = encryptor.encrypt(new BigIntegerPlainText(n1.getX multiply n2.getX))
+
+
+//   ////////////////////////
+
+//   val secureRandom = new SecureRandom()
+//   val publicKey: DamgardJurikPublicKey = keyPair.getPublic.asInstanceOf[DamgardJurikPublicKey]
+//   val privateKey: DamgardJurikPrivateKey = keyPair.getPrivate.asInstanceOf[DamgardJurikPrivateKey]
+//   val proverComputation: SigmaDJProductProverComputation = new SigmaDJProductProverComputation()
+//   val proverInput: SigmaDJProductProverInput = new SigmaDJProductProverInput(publicKey,
+//                                                                              cA.asInstanceOf[BigIntegerCiphertext],
+//                                                                              cB.asInstanceOf[BigIntegerCiphertext],
+//                                                                              cC.asInstanceOf[BigIntegerCiphertext],
+//                                                                              privateKey,
+//                                                                              n1,
+//                                                                              n2)
+
+//   val verifierComputation: SigmaDJProductVerifierComputation = new SigmaDJProductVerifierComputation()
+//   verifierComputation.sampleChallenge()
+//   val challenge: Array[Byte] = verifierComputation.getChallenge()
+
+
+
+//   val proverMsg1: SigmaProtocolMsg = proverComputation.computeFirstMsg(proverInput)
+//   val proverMsg2: SigmaProtocolMsg = proverComputation.computeSecondMsg(challenge)
+
+//   val commonInput: SigmaDJProductCommonInput = new SigmaDJProductCommonInput(publicKey,
+//                                                                              cA.asInstanceOf[BigIntegerCiphertext],
+//                                                                              cB.asInstanceOf[BigIntegerCiphertext],
+//                                                                              cC.asInstanceOf[BigIntegerCiphertext])
+
+//   println(">>>: " + verifierComputation.verify(commonInput, proverMsg1, proverMsg2))
+
+// }
 
 object HelloWorld extends App {
 
@@ -191,8 +255,6 @@ object HelloWorld extends App {
 
 // OBJECT HelloWorld extends App {
 //   //TODO keys in plain text
-
-
 
 //   val encryptor: DamgardJurikEnc = new ScDamgardJurikEnc()
 //   val senderPair: KeyPair = encryptor.generateKey(new DJKeyGenParameterSpec(128, 40))
