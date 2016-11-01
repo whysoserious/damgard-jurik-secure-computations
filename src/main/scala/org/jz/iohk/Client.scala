@@ -19,7 +19,7 @@ object Client {
 
 }
 
-class Client(number: BigInteger, brokerPath: ActorPath, resolveTimeout: FiniteDuration) extends Actor with ActorLogging with LoggingInterceptor {
+class Client(number: BigInteger, brokerPath: ActorPath) extends Actor with ActorLogging with LoggingInterceptor {
 
   import Broker._
   import Client._

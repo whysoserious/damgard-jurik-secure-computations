@@ -1,14 +1,12 @@
 package org.jz.iohk
 
-import akka.actor.PoisonPill
-import java.math.BigInteger
-import java.security.{KeyPair, PublicKey, SecureRandom}
+import java.security.KeyPair
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import akka.actor.{Actor, ActorRef, Props}
 import edu.biu.scapi.midLayer.asymmetricCrypto.encryption.{DJKeyGenParameterSpec, DamgardJurikEnc, ScDamgardJurikEnc}
 import edu.biu.scapi.midLayer.asymmetricCrypto.keys.DamgardJurikPublicKey
-import edu.biu.scapi.midLayer.ciphertext.{AsymmetricCiphertext, BigIntegerCiphertext}
-import edu.biu.scapi.midLayer.plaintext.{BigIntegerPlainText, Plaintext}
+import edu.biu.scapi.midLayer.ciphertext.BigIntegerCiphertext
+import edu.biu.scapi.midLayer.plaintext.BigIntegerPlainText
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.duration._
 import scala.util.Random
