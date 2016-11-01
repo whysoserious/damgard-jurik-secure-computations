@@ -105,9 +105,13 @@ class Broker(modulusLength: Int = 128, certainty: Int = 40, protocolTimeout: Fin
       }
 
     case CheckProtocolTimeout if ciphertext1.isEmpty || ciphertext2.isEmpty =>
+      // send Abort if possible
       client1.map(_ ! Abort)
       client2.map(_ ! Abort)
-      self ! PoisonPill
+      // respond with Abort to all actors
+      context.become({case _ => sender() ! Abort})
+      //  die
+      context.stop(self)
 
     case x =>
       unhandled(x)
