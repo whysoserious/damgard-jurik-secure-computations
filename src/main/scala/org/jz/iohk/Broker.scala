@@ -1,5 +1,6 @@
 package org.jz.iohk
 
+import akka.actor.PoisonPill
 import java.math.BigInteger
 import java.security.{KeyPair, PublicKey, SecureRandom}
 
@@ -8,6 +9,8 @@ import edu.biu.scapi.midLayer.asymmetricCrypto.encryption.{DJKeyGenParameterSpec
 import edu.biu.scapi.midLayer.asymmetricCrypto.keys.DamgardJurikPublicKey
 import edu.biu.scapi.midLayer.ciphertext.{AsymmetricCiphertext, BigIntegerCiphertext}
 import edu.biu.scapi.midLayer.plaintext.{BigIntegerPlainText, Plaintext}
+import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.duration._
 import scala.util.Random
 
 object Broker {
@@ -20,14 +23,16 @@ object Broker {
   case class EncryptedResult(n: BigIntegerCiphertext) extends BrokerMessage
   case object Abort extends BrokerMessage
   private case object MultiplyNumbers extends BrokerMessage
+  private case object CheckProtocolTimeout extends BrokerMessage
 
 }
 
-class Broker(modulusLength: Int = 128, certainty: Int = 40) extends Actor with LoggingInterceptor { // TODO timeout
+class Broker(modulusLength: Int = 128, certainty: Int = 40, protocolTimeout: FiniteDuration = 10.seconds) extends Actor with LoggingInterceptor {
 
   import Broker._
   import Client._
   import Verifier._
+  import context.dispatcher
 
   val encryptor: DamgardJurikEnc = new ScDamgardJurikEnc()
   val keyPair: KeyPair = encryptor.generateKey(new DJKeyGenParameterSpec(modulusLength, certainty))
@@ -40,6 +45,10 @@ class Broker(modulusLength: Int = 128, certainty: Int = 40) extends Actor with L
   var plainText1: Option[BigIntegerPlainText] = None
   var plainText2: Option[BigIntegerPlainText] = None
   var encryptedProduct: Option[BigIntegerCiphertext] = None
+
+  override def preStart(): Unit = {
+    context.system.scheduler.scheduleOnce(protocolTimeout, self, CheckProtocolTimeout)
+  }
 
   override def receive = {
 
@@ -94,6 +103,11 @@ class Broker(modulusLength: Int = 128, certainty: Int = 40) extends Actor with L
         val actorName = s"prover-${Random.alphanumeric.take(4).mkString}"
         context.actorOf(Props(new Prover(verifierPath, keyPair, cA, cB, cC, number1, number2)), actorName)
       }
+
+    case CheckProtocolTimeout if ciphertext1.isEmpty || ciphertext2.isEmpty =>
+      client1.map(_ ! Abort)
+      client2.map(_ ! Abort)
+      self ! PoisonPill
 
     case x =>
       unhandled(x)
