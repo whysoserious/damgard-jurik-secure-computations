@@ -8,6 +8,7 @@ import edu.biu.scapi.midLayer.asymmetricCrypto.encryption.{DJKeyGenParameterSpec
 import edu.biu.scapi.midLayer.asymmetricCrypto.keys.DamgardJurikPublicKey
 import edu.biu.scapi.midLayer.ciphertext.{AsymmetricCiphertext, BigIntegerCiphertext}
 import edu.biu.scapi.midLayer.plaintext.{BigIntegerPlainText, Plaintext}
+import scala.util.Random
 
 object Broker {
 
@@ -87,7 +88,11 @@ class Broker(modulusLength: Int = 128, certainty: Int = 40) extends Actor with L
         number1 <- plainText1
         number2 <- plainText2
       } {
-        context.actorOf(Props(new Prover(sender(), keyPair, cA, cB, cC, number1, number2)))
+        // sender().path needs to be saved in val because Props.apply below accepts lazy constructor
+        // which can be invoked when sender() would return a different value
+        val verifierPath = sender().path
+        val actorName = s"prover-${Random.alphanumeric.take(4).mkString}"
+        context.actorOf(Props(new Prover(verifierPath, keyPair, cA, cB, cC, number1, number2)), actorName)
       }
 
     case x =>

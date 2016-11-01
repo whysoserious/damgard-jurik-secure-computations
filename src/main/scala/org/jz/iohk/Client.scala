@@ -43,14 +43,11 @@ class Client(number: BigInteger, brokerPath: ActorPath, resolveTimeout: FiniteDu
     case Invite(pk: DamgardJurikPublicKey) if cA.isEmpty =>
       publicKey = Some(pk)
       val cipherText: BigIntegerCiphertext = encryptNumber(number, pk)
-      cA = Some(cipherText)
       broker ! EncryptedNumber(cipherText)
 
-    case EncryptedNumbers(n1: BigIntegerCiphertext, n2: BigIntegerCiphertext) if cB.isEmpty && Some(n1).equals(cA) =>
+    case EncryptedNumbers(n1: BigIntegerCiphertext, n2: BigIntegerCiphertext) if cA.isEmpty && cB.isEmpty =>
+      cA= Some(n1)
       cB = Some(n2)
-
-    case EncryptedNumbers(n1: BigIntegerCiphertext, n2: BigIntegerCiphertext) if cB.isEmpty && Some(n2).equals(cA) =>
-      cB = Some(n1)
 
     case EncryptedResult(n: BigIntegerCiphertext) if cC.isEmpty =>
       cC = Some(n)
@@ -60,11 +57,12 @@ class Client(number: BigInteger, brokerPath: ActorPath, resolveTimeout: FiniteDu
         c <- cC
         pk <- publicKey
       } {
-        context.actorOf(Props(new Verifier(broker, pk, a, b, c)), "verifier")
+        context.actorOf(Props(new Verifier(brokerPath, pk, a, b, c)), "verifier")
       }
 
     case ProofResult(success) =>
       log.info(s"Proof result: $success")
+      self ! PoisonPill
 
     case Abort =>
       self ! PoisonPill

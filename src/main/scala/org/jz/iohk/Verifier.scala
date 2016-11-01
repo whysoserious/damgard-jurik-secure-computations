@@ -1,6 +1,6 @@
 package org.jz.iohk
 
-import akka.actor.{Actor, ActorLogging, ActorRef, ActorSelection, PoisonPill}
+import akka.actor.{ Actor, ActorLogging, ActorPath, ActorRef, ActorSelection, PoisonPill }
 import edu.biu.scapi.interactiveMidProtocols.sigmaProtocol.damgardJurikProduct.{SigmaDJProductCommonInput, SigmaDJProductVerifierComputation}
 import edu.biu.scapi.interactiveMidProtocols.sigmaProtocol.utility.SigmaProtocolMsg
 import edu.biu.scapi.midLayer.asymmetricCrypto.keys.DamgardJurikPublicKey
@@ -16,13 +16,14 @@ object Verifier {
   case class ProofResult(success: Boolean) extends VerifierMessage
 
 }
-class Verifier(broker: ActorSelection,
+class Verifier(brokerPath: ActorPath,
                publicKey: DamgardJurikPublicKey,
                cA: BigIntegerCiphertext, cB: BigIntegerCiphertext, cC: BigIntegerCiphertext) extends Actor with LoggingInterceptor {
 
   import Prover._
   import Verifier._
 
+  val broker: ActorSelection = context.actorSelection(brokerPath)
   val verifierComputation: SigmaDJProductVerifierComputation = new SigmaDJProductVerifierComputation()
 
   var proverMsg1: Option[SigmaProtocolMsg] = None
@@ -40,10 +41,7 @@ class Verifier(broker: ActorSelection,
       sender() ! Challenge(challenge)
 
     case Message2(msg2) if proverMsg1.isDefined  =>
-      val commonInput: SigmaDJProductCommonInput = new SigmaDJProductCommonInput(publicKey,
-                                                                                 cA.asInstanceOf[BigIntegerCiphertext],
-                                                                                 cB.asInstanceOf[BigIntegerCiphertext],
-                                                                                 cC.asInstanceOf[BigIntegerCiphertext])
+      val commonInput: SigmaDJProductCommonInput = new SigmaDJProductCommonInput(publicKey, cA, cB, cC)
       val result: Boolean = verifierComputation.verify(commonInput, proverMsg1.get, msg2)
       context.parent ! ProofResult(result)
       self ! PoisonPill

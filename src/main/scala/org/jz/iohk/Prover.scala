@@ -1,8 +1,9 @@
 package org.jz.iohk
 
-import java.security.{SecureRandom, PublicKey, KeyPair}
+import akka.actor.{ActorPath, ActorSelection}
+import java.security.{SecureRandom, KeyPair}
 
-import akka.actor.{Actor, ActorLogging, ActorRef, PoisonPill}
+import akka.actor.{Actor, PoisonPill}
 import edu.biu.scapi.interactiveMidProtocols.sigmaProtocol.damgardJurikProduct.{SigmaDJProductProverComputation, SigmaDJProductProverInput}
 import edu.biu.scapi.interactiveMidProtocols.sigmaProtocol.utility.SigmaProtocolMsg
 import edu.biu.scapi.midLayer.asymmetricCrypto.keys.{DamgardJurikPrivateKey, DamgardJurikPublicKey}
@@ -18,7 +19,7 @@ object Prover {
 
 }
 
-class Prover(verifier: ActorRef, keyPair: KeyPair,
+class Prover(verifierPath: ActorPath, keyPair: KeyPair,
              cA: BigIntegerCiphertext, cB: BigIntegerCiphertext, cC: BigIntegerCiphertext,
              n1: BigIntegerPlainText, n2: BigIntegerPlainText,
              secureRandom: SecureRandom = new SecureRandom()) extends Actor with LoggingInterceptor {
@@ -26,6 +27,7 @@ class Prover(verifier: ActorRef, keyPair: KeyPair,
   import Prover._
   import Verifier._
 
+  val verifier: ActorSelection = context.actorSelection(verifierPath)
   val publicKey: DamgardJurikPublicKey = keyPair.getPublic.asInstanceOf[DamgardJurikPublicKey]
   val privateKey: DamgardJurikPrivateKey = keyPair.getPrivate.asInstanceOf[DamgardJurikPrivateKey]
   val proverComputation: SigmaDJProductProverComputation = new SigmaDJProductProverComputation()
@@ -38,7 +40,7 @@ class Prover(verifier: ActorRef, keyPair: KeyPair,
 
   override def receive = {
 
-    case Challenge(challenge) if sender().equals(verifier) =>
+    case Challenge(challenge) =>
       val msg2 = proverComputation.computeSecondMsg(challenge)
       verifier ! Message2(msg2)
       self ! PoisonPill
