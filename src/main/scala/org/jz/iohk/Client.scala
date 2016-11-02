@@ -1,12 +1,11 @@
 package org.jz.iohk
 
 import java.math.BigInteger
-import scala.concurrent.duration._
 
-import akka.actor.{Actor, ActorLogging, ActorPath, ActorRef, ActorSelection, PoisonPill, Props}
+import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import edu.biu.scapi.midLayer.asymmetricCrypto.encryption.{DamgardJurikEnc, ScDamgardJurikEnc}
 import edu.biu.scapi.midLayer.asymmetricCrypto.keys.DamgardJurikPublicKey
-import edu.biu.scapi.midLayer.ciphertext.{AsymmetricCiphertext, BigIntegerCiphertext}
+import edu.biu.scapi.midLayer.ciphertext.BigIntegerCiphertext
 import edu.biu.scapi.midLayer.plaintext.BigIntegerPlainText
 
 object Client {
@@ -16,21 +15,22 @@ object Client {
   sealed trait ClientMessage extends ActorMessage
   case object Register extends ClientMessage
   case class EncryptedNumber(n: BigIntegerCiphertext) extends ClientMessage
+  case object GetProofResult extends ClientMessage
 
 }
 
-class Client(number: BigInteger, brokerPath: ActorPath) extends Actor with ActorLogging with LoggingInterceptor {
+class Client(number: BigInteger, broker: ActorRef) extends Actor with ActorLogging with LoggingInterceptor {
 
   import Broker._
   import Client._
   import Verifier._
 
-  val broker: ActorSelection = context.actorSelection(brokerPath)
-
   var cA: Option[BigIntegerCiphertext] = None
   var cB: Option[BigIntegerCiphertext] = None
   var cC: Option[BigIntegerCiphertext] = None
   var publicKey: Option[DamgardJurikPublicKey] = None
+  var proofResult: Option[ProofResult] = None
+  var waitingForProofResult: Seq[ActorRef] = Seq()
 
   implicit val ec = context.dispatcher
 
@@ -57,15 +57,22 @@ class Client(number: BigInteger, brokerPath: ActorPath) extends Actor with Actor
         c <- cC
         pk <- publicKey
       } {
-        context.actorOf(Props(new Verifier(brokerPath, pk, a, b, c)), "verifier")
+        context.actorOf(Props(new Verifier(broker, pk, a, b, c)), "verifier")
       }
 
-    case ProofResult(success) =>
+    case pr @ ProofResult(success) =>
       log.info(s"Proof result: $success")
-      self ! PoisonPill
+      waitingForProofResult.foreach(_ ! pr)
+      proofResult = Some(pr)
+
+    case GetProofResult =>
+      proofResult match {
+        case None => waitingForProofResult = waitingForProofResult :+ sender()
+        case Some(pr) => sender ! pr
+      }
 
     case Abort =>
-      self ! PoisonPill
+      context.stop(self)
 
     case x =>
       unhandled(x)

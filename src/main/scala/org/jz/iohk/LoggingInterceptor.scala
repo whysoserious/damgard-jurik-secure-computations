@@ -1,6 +1,6 @@
 package org.jz.iohk
 
-import akka.actor.{Actor, ActorLogging, ActorPath, ActorRef, ActorSelection}
+import akka.actor.{Actor, ActorLogging, ActorRef, ActorPath}
 import akka.contrib.pattern._
 import akka.contrib.pattern.ReceivePipeline.Inner
 
@@ -36,11 +36,11 @@ trait LoggingInterceptor extends ReceivePipeline {
 
   import Env._
 
-  protected lazy val loggingActor: ActorSelection = context.actorSelection("/user/logging-actor")
+  def loggingActor: Option[ActorRef] = None
 
   pipelineOuter {
     case msg: ActorMessage =>
-      loggingActor ! LogMessage(msg, sender().path, self.path)
+      loggingActor map { _! LogMessage(msg, sender().path, self.path) }
       Inner(msg)
   }
 

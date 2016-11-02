@@ -97,9 +97,9 @@ class Broker(modulusLength: Int = 128, certainty: Int = 40, protocolTimeout: Fin
       } {
         // sender().path needs to be saved in val because Props.apply below accepts lazy constructor
         // which can be invoked when sender() would return a different value
-        val verifierPath = sender().path
+        val verifier = sender()
         val actorName = s"prover-${Random.alphanumeric.take(4).mkString}"
-        context.actorOf(Props(new Prover(verifierPath, keyPair, cA, cB, cC, number1, number2)), actorName)
+        context.actorOf(Props(new Prover(verifier, keyPair, cA, cB, cC, number1, number2)), actorName)
       }
 
     case CheckProtocolTimeout if ciphertext1.isEmpty || ciphertext2.isEmpty =>
@@ -108,7 +108,7 @@ class Broker(modulusLength: Int = 128, certainty: Int = 40, protocolTimeout: Fin
       client2.map(_ ! Abort)
       // respond with Abort to all actors
       context.become({case _ => sender() ! Abort})
-      //  die
+      // die
       context.stop(self)
 
     case x =>
