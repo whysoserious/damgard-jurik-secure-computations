@@ -27,7 +27,7 @@ class Env extends Actor with ActorLogging {
 
   def receive = {
     case LogMessage(msg, sndr, rcvr) =>
-      println(s">>> ${customName(sndr)} -> ${customName(rcvr)}\n\t$msg\n") // Use log.info
+      println(s">>> ${customName(sndr)} -> ${customName(rcvr)}\n\t$msg\n") //TODO Use log.info
   }
 
 }

@@ -108,8 +108,6 @@ class Broker(modulusLength: Int = 128, certainty: Int = 40, protocolTimeout: Fin
       client2.map(_ ! Abort)
       // respond with Abort to all actors
       context.become({case _ => sender() ! Abort})
-      // die
-      context.stop(self)
 
     case x =>
       unhandled(x)
