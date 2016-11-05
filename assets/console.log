@@ -1,0 +1,100 @@
+Loading /usr/share/sbt/bin/sbt-launch-lib.bash
+Java HotSpot(TM) 64-Bit Server VM warning: ignoring option MaxPermSize=256m; support was removed in 8.0
+[info] Loading project definition from /home/jan/Dev/damgard-jurik-secure-computations/project
+[info] Set current project to damgard-jurik-secure-computations (in build file:/home/jan/Dev/damgard-jurik-secure-computations/)
+[info] Running org.jz.iohk.HelloWorld
+[INFO] [11/05/2016 17:34:25.508] [run-main-0] [akka.remote.Remoting] Starting remoting
+[INFO] [11/05/2016 17:34:25.607] [run-main-0] [akka.remote.Remoting] Remoting started; listening on addresses :[akka.tcp://caroll-system@127.0.0.1:7654]
+[INFO] [11/05/2016 17:34:25.608] [run-main-0] [akka.remote.Remoting] Remoting now listens on addresses: [akka.tcp://caroll-system@127.0.0.1:7654]
+[INFO] [11/05/2016 17:34:25.627] [run-main-0] [akka.remote.Remoting] Starting remoting
+[INFO] [11/05/2016 17:34:25.632] [run-main-0] [akka.remote.Remoting] Remoting started; listening on addresses :[akka.tcp://alice-system@127.0.0.1:7652]
+[INFO] [11/05/2016 17:34:25.633] [run-main-0] [akka.remote.Remoting] Remoting now listens on addresses: [akka.tcp://alice-system@127.0.0.1:7652]
+[INFO] [11/05/2016 17:34:25.643] [run-main-0] [akka.remote.Remoting] Starting remoting
+[INFO] [11/05/2016 17:34:25.649] [run-main-0] [akka.remote.Remoting] Remoting started; listening on addresses :[akka.tcp://bob-system@127.0.0.1:7653]
+[INFO] [11/05/2016 17:34:25.649] [run-main-0] [akka.remote.Remoting] Remoting now listens on addresses: [akka.tcp://bob-system@127.0.0.1:7653]
+>>> alice -> caroll
+       	Register
+
+>>> temp/$a -> alice
+       	GetProofResult
+
+>>> caroll -> alice
+       	Invite(edu.biu.scapi.midLayer.asymmetricCrypto.keys.ScDamgardJurikPublicKey@3d6a4c2a)
+
+>>> bob -> caroll
+       	Register
+
+>>> caroll -> bob
+       	Invite(edu.biu.scapi.midLayer.asymmetricCrypto.keys.ScDamgardJurikPublicKey@3d6a4c2a)
+
+>>> bob -> caroll
+       	EncryptedNumber(BigIntegerCiphertext [cipher=36655672956981375556478449288923376723450409960260726604893267932131821892475])
+
+>>> alice -> caroll
+       	EncryptedNumber(BigIntegerCiphertext [cipher=26623425837294227976077772356345588375611346296729825794583448965857053066369])
+
+>>> caroll -> caroll
+       	MultiplyNumbers
+
+>>> caroll -> bob
+       	EncryptedNumbers(BigIntegerCiphertext [cipher=26623425837294227976077772356345588375611346296729825794583448965857053066369],BigIntegerCiphertext [cipher=36655672956981375556478449288923376723450409960260726604893267932131821892475])
+
+>>> caroll -> alice
+       	EncryptedNumbers(BigIntegerCiphertext [cipher=26623425837294227976077772356345588375611346296729825794583448965857053066369],BigIntegerCiphertext [cipher=36655672956981375556478449288923376723450409960260726604893267932131821892475])
+
+>>> caroll -> alice
+       	EncryptedResult(BigIntegerCiphertext [cipher=28258048999092207987087500015301883959103071834815465622690636742338990836518])
+
+>>> caroll -> caroll
+       	MultiplyNumbers
+
+>>> caroll -> bob
+       	EncryptedResult(BigIntegerCiphertext [cipher=28258048999092207987087500015301883959103071834815465622690636742338990836518])
+
+>>> bob/verifier -> caroll
+       	Prove
+
+>>> alice/verifier -> caroll
+       	Prove
+
+>>> caroll/prover-Dikq -> bob/verifier
+       	Message1(edu.biu.scapi.interactiveMidProtocols.sigmaProtocol.damgardJurikProduct.SigmaDJProductFirstMsg@6959b3b)
+
+>>> caroll/prover-qPHQ -> alice/verifier
+       	Message1(edu.biu.scapi.interactiveMidProtocols.sigmaProtocol.damgardJurikProduct.SigmaDJProductFirstMsg@9167f04)
+
+>>> bob/verifier -> caroll/prover-Dikq
+       	Challenge([B@4d3891f1)
+
+>>> alice/verifier -> caroll/prover-qPHQ
+       	Challenge([B@4f992f1f)
+
+>>> caroll/prover-Dikq -> bob/verifier
+       	Message2(edu.biu.scapi.interactiveMidProtocols.sigmaProtocol.damgardJurikProduct.SigmaDJProductSecondMsg@2b6ea097)
+
+>>> caroll/prover-qPHQ -> alice/verifier
+       	Message2(edu.biu.scapi.interactiveMidProtocols.sigmaProtocol.damgardJurikProduct.SigmaDJProductSecondMsg@d5e5854)
+
+>>> bob/verifier -> bob
+       	ProofResult(true)
+
+>>> alice/verifier -> alice
+       	ProofResult(true)
+
+[INFO] [11/05/2016 17:34:25.721] [bob-system-akka.actor.default-dispatcher-3] [akka.tcp://bob-system@127.0.0.1:7653/user/bob] Proof result: true
+[INFO] [11/05/2016 17:34:25.722] [alice-system-akka.actor.default-dispatcher-6] [akka.tcp://alice-system@127.0.0.1:7652/user/alice] Proof result: true
+>>> temp/$a -> bob
+       	GetProofResult
+
+[INFO] [11/05/2016 17:34:25.730] [caroll-system-akka.remote.default-remote-dispatcher-6] [akka.tcp://caroll-system@127.0.0.1:7654/system/remoting-terminator] Shutting down remote daemon.
+[INFO] [11/05/2016 17:34:25.731] [caroll-system-akka.remote.default-remote-dispatcher-6] [akka.tcp://caroll-system@127.0.0.1:7654/system/remoting-terminator] Remote daemon shut down; proceeding with flushing remote transports.
+[INFO] [11/05/2016 17:34:25.751] [caroll-system-akka.actor.default-dispatcher-16] [akka.remote.Remoting] Remoting shut down
+[INFO] [11/05/2016 17:34:25.752] [caroll-system-akka.remote.default-remote-dispatcher-5] [akka.tcp://caroll-system@127.0.0.1:7654/system/remoting-terminator] Remoting shut down.
+[INFO] [11/05/2016 17:34:25.766] [alice-system-akka.remote.default-remote-dispatcher-17] [akka.tcp://alice-system@127.0.0.1:7652/system/remoting-terminator] Shutting down remote daemon.
+[INFO] [11/05/2016 17:34:25.766] [alice-system-akka.remote.default-remote-dispatcher-17] [akka.tcp://alice-system@127.0.0.1:7652/system/remoting-terminator] Remote daemon shut down; proceeding with flushing remote transports.
+[INFO] [11/05/2016 17:34:25.768] [alice-system-akka.actor.default-dispatcher-5] [akka.remote.Remoting] Remoting shut down
+[INFO] [11/05/2016 17:34:25.768] [alice-system-akka.remote.default-remote-dispatcher-17] [akka.tcp://alice-system@127.0.0.1:7652/system/remoting-terminator] Remoting shut down.
+[INFO] [11/05/2016 17:34:25.782] [bob-system-akka.remote.default-remote-dispatcher-6] [akka.tcp://bob-system@127.0.0.1:7653/system/remoting-terminator] Shutting down remote daemon.
+[INFO] [11/05/2016 17:34:25.783] [bob-system-akka.remote.default-remote-dispatcher-6] [akka.tcp://bob-system@127.0.0.1:7653/system/remoting-terminator] Remote daemon shut down; proceeding with flushing remote transports.
+[INFO] [11/05/2016 17:34:25.784] [bob-system-akka.actor.default-dispatcher-2] [akka.remote.Remoting] Remoting shut down
+[INFO] [11/05/2016 17:34:25.784] [bob-system-akka.remote.default-remote-dispatcher-7] [akka.tcp://bob-system@127.0.0.1:7653/system/remoting-terminator] Remoting shut down.
