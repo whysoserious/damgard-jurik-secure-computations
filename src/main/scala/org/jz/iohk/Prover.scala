@@ -1,6 +1,6 @@
 package org.jz.iohk
 
-import java.security.{SecureRandom, KeyPair}
+import java.security.{KeyPair, SecureRandom}
 
 import akka.actor.{Actor, ActorRef}
 import edu.biu.scapi.interactiveMidProtocols.sigmaProtocol.damgardJurikProduct.{SigmaDJProductProverComputation, SigmaDJProductProverInput}

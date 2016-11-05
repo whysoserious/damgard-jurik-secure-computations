@@ -1,15 +1,14 @@
 package org.jz.iohk
 
-import akka.actor.ActorRef
-import akka.util.Timeout
-import com.typesafe.config.ConfigFactory
 import java.math.BigInteger
-import scala.concurrent.{ Await, Future }
-import scala.concurrent.Await
+
+import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
 
-import akka.actor.{ActorSystem, Props}
+import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.pattern._
+import akka.util.Timeout
+import com.typesafe.config.ConfigFactory
 
 object HelloWorld extends App {
 
@@ -29,17 +28,17 @@ object HelloWorld extends App {
   val caroll = system1.actorOf(Props(new Broker() with RemoteLoggingInterceptor), "caroll")
 
   val system2 = ActorSystem("alice-system", config.getConfig("alice").withFallback(commonConfig))
-  val alice = system2.actorOf(Props(new Client(new BigInteger("7"), caroll) with RemoteLoggingInterceptor), "alice")
+  val alice = system2.actorOf(Props(new Client(BigInteger.valueOf(7), caroll) with RemoteLoggingInterceptor), "alice")
 
   val system3 = ActorSystem("bob-system", config.getConfig("bob").withFallback(commonConfig))
-  val bob = system3.actorOf(Props(new Client(new BigInteger("8"), caroll) with RemoteLoggingInterceptor), "bob")
+  val bob = system3.actorOf(Props(new Client(BigInteger.valueOf(8), caroll) with RemoteLoggingInterceptor), "bob")
 
   // graceful shutdown
 
   val timeout: FiniteDuration = 5.seconds
   implicit val askTimeout: Timeout = timeout
-  import scala.concurrent.ExecutionContext.Implicits.global
   import Client.GetProofResult
+  import scala.concurrent.ExecutionContext.Implicits.global
 
   for {
     _ <- (alice ? GetProofResult)

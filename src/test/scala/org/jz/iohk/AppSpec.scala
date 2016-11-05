@@ -1,33 +1,26 @@
 package org.jz.iohk
 
-import akka.actor.ActorRef
-import akka.util.Timeout
-import com.typesafe.config.ConfigFactory
 import java.math.BigInteger
-import scala.concurrent.{ Await, Future }
-import scala.concurrent.Await
+
 import scala.concurrent.duration._
 
-import akka.actor.{ActorSystem, Props}
-import akka.pattern._
-import akka.testkit.{ TestActors, TestKit, ImplicitSender, TestProbe }
-import org.scalatest.WordSpecLike
-import org.scalatest.Matchers
-import org.scalatest.BeforeAndAfterAll
-import scala.concurrent.duration._
+import akka.actor.{ActorRef, ActorSystem, Props}
+import akka.testkit.{ImplicitSender, TestKit, TestProbe}
+import com.typesafe.config.ConfigFactory
+import org.scalatest.{WordSpecLike, Matchers, BeforeAndAfterAll}
 
 class AppSpec() extends TestKit(ActorSystem("dj-test-system-1", ConfigFactory.parseString("{akka.loglevel = ERROR}")))
     with ImplicitSender with WordSpecLike with Matchers with BeforeAndAfterAll {
 
-  import Client._
   import Broker._
+  import Client._
 
-  override def afterAll {
+  override def afterAll: Unit = {
     TestKit.shutdownActorSystem(system)
   }
 
-  val broker = system.actorOf(Props(new Broker(protocolTimeout = 0.millis)), "broker")
-  val client = system.actorOf(Props(new Client(new BigInteger("1"), broker)), "client")
+  val broker: ActorRef = system.actorOf(Props(new Broker(protocolTimeout = 0.millis)), "broker")
+  val client: ActorRef = system.actorOf(Props(new Client(new BigInteger("1"), broker)), "client")
 
   "A broker" when {
 

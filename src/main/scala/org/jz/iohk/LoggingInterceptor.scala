@@ -4,7 +4,6 @@ import akka.actor.{Actor, ActorLogging, ActorRef, ActorPath}
 import akka.contrib.pattern._
 import akka.contrib.pattern.ReceivePipeline.Inner
 
-
 object Env {
 
   trait ActorMessage

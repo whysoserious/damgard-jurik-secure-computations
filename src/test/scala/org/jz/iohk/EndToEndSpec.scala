@@ -1,33 +1,24 @@
 package org.jz.iohk
 
-import akka.actor.ActorRef
+import java.math.BigInteger
+
+import scala.concurrent.{Await, Future}
+import scala.concurrent.duration._
+
+import akka.actor.{ActorRef, ActorSystem, Props}
+import akka.pattern._
+import akka.testkit.{ImplicitSender, TestKit}
 import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
-import java.math.BigInteger
-import org.scalatest.{ AsyncWordSpecLike, PropSpecLike }
-import scala.concurrent.{ Await, Future }
-import scala.concurrent.Await
-import scala.concurrent.duration._
-
-import akka.actor.{ActorSystem, Props}
-import akka.pattern._
-import akka.testkit.{ TestActors, TestKit, ImplicitSender, TestProbe }
-import org.scalatest.WordSpecLike
-import org.scalatest.Matchers
-import org.scalatest.BeforeAndAfterAll
-import scala.concurrent.duration._
-import org.scalatest.prop.{GeneratorDrivenPropertyChecks, PropertyChecks}
-import org.scalatest.{Matchers, PropSpec, Assertion}
 import org.scalacheck._
+import org.scalatest.{WordSpecLike, BeforeAndAfterAll, Assertion, Matchers, PropSpec, AsyncWordSpecLike, PropSpecLike}
+import org.scalatest.prop.{GeneratorDrivenPropertyChecks, PropertyChecks}
 
-
-
-// TODO organize traits
 class EndToEndSpec() extends TestKit(ActorSystem("dj-test-system-2", ConfigFactory.parseString("{akka.loglevel = ERROR}")))
     with ImplicitSender with WordSpecLike with PropertyChecks with GeneratorDrivenPropertyChecks with Matchers with BeforeAndAfterAll {
 
-  import Client._
   import Broker._
+  import Client._
   import Verifier._
 
   override def afterAll: Unit = {
