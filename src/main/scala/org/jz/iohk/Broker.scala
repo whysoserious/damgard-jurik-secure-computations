@@ -106,7 +106,7 @@ class Broker(modulusLength: Int = 128, certainty: Int = 40, protocolTimeout: Fin
         // which can be invoked when sender() would return a different value
         val verifier = sender()
         val actorName = s"prover-${Random.alphanumeric.take(4).mkString}"
-        context.actorOf(Props(new Prover(verifier, keyPair, cA, cB, cC, number1, number2)), actorName)
+        context.actorOf(Props(new Prover(verifier, keyPair, cA, cB, cC, number1, number2, _loggingActor = loggingActor)), actorName)
       }
 
     case CheckProtocolTimeout if ciphertext1.isEmpty || ciphertext2.isEmpty =>

@@ -63,7 +63,7 @@ class Client(number: BigInteger, broker: ActorRef) extends Actor with ActorLoggi
         c <- cC
         pk <- publicKey
       } {
-        context.actorOf(Props(new Verifier(broker, pk, a, b, c)), "verifier")
+        context.actorOf(Props(new Verifier(broker, pk, a, b, c, loggingActor)), "verifier")
       }
 
     case pr @ ProofResult(success) =>

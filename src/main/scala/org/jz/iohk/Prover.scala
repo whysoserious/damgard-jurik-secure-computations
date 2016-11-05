@@ -23,11 +23,13 @@ object Prover {
 class Prover(verifier: ActorRef, keyPair: KeyPair,
              cA: BigIntegerCiphertext, cB: BigIntegerCiphertext, cC: BigIntegerCiphertext,
              n1: BigIntegerPlainText, n2: BigIntegerPlainText,
-             secureRandom: SecureRandom = new SecureRandom()) extends Actor with LoggingInterceptor {
+             secureRandom: SecureRandom = new SecureRandom(),
+             _loggingActor: Option[ActorRef] = None) extends Actor with LoggingInterceptor {
 
   import Prover._
   import Verifier._
 
+  override def loggingActor: Option[ActorRef] = _loggingActor
   val publicKey: DamgardJurikPublicKey = keyPair.getPublic.asInstanceOf[DamgardJurikPublicKey]
   val privateKey: DamgardJurikPrivateKey = keyPair.getPrivate.asInstanceOf[DamgardJurikPrivateKey]
   val proverComputation: SigmaDJProductProverComputation = new SigmaDJProductProverComputation()

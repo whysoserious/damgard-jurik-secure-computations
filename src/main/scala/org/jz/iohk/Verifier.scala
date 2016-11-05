@@ -21,11 +21,13 @@ object Verifier {
 // Verifier usually spawned by a client of a broker. Responsible for validating a zero-knowledge proof of a computation performed by a broker
 class Verifier(broker: ActorRef,
                publicKey: DamgardJurikPublicKey,
-               cA: BigIntegerCiphertext, cB: BigIntegerCiphertext, cC: BigIntegerCiphertext) extends Actor with LoggingInterceptor {
+               cA: BigIntegerCiphertext, cB: BigIntegerCiphertext, cC: BigIntegerCiphertext,
+               _loggingActor: Option[ActorRef] = None) extends Actor with LoggingInterceptor {
 
   import Prover._
   import Verifier._
 
+  override def loggingActor: Option[ActorRef] = _loggingActor
   val verifierComputation: SigmaDJProductVerifierComputation = new SigmaDJProductVerifierComputation()
 
   var proverMsg1: Option[SigmaProtocolMsg] = None
