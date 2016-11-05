@@ -1,0 +1,36 @@
+sequenceDiagram
+participant Alice
+participant Bob
+participant Caroll
+participant Alice/Verifier
+participant Caroll/Prover1
+participant Bob/Verifier
+participant Caroll/Prover2
+Alice->> Caroll: Register
+Caroll->> Alice: Invite
+Bob->> Caroll: Register
+Caroll->> Bob: Invite
+Alice->> Caroll: EncryptedNumber
+Bob->> Caroll: EncryptedNumber
+Caroll->> Caroll: MultiplyNumbers
+Note right of Caroll: Waiting for second number...
+Caroll->> Alice: EncryptedNumbers
+Caroll->> Bob: EncryptedNumbers
+Caroll->> Caroll: MultiplyNumbers
+Note right of Caroll: Received second number. Multiply them and send results to clients
+Caroll->> Bob: EncryptedResult
+Note right of Bob: Spawn Verifier
+Caroll->> Alice: EncryptedResult
+Note right of Alice: Spawn Verifier
+Alice/Verifier->> Caroll: Prove
+Bob/Verifier->> Caroll: Prove
+Note right of Caroll: Spawn Provers
+Caroll/Prover2->> Bob/Verifier: Message1
+Caroll/Prover1->> Alice/Verifier: Message1
+Alice/Verifier->> Caroll/Prover1: Challenge
+Bob/Verifier->> Caroll/Prover2: Challenge
+Caroll/Prover1->> Alice/Verifier: Message2
+Caroll/Prover2->> Bob/Verifier: Message2
+Bob/Verifier->> Bob: ProofResult
+Alice/Verifier->> Alice: ProofResult
+q
