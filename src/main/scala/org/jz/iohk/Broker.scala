@@ -15,11 +15,13 @@ object Broker {
 
   import Env.ActorMessage
 
+  // messages sent by a broker
   sealed trait BrokerMessage extends ActorMessage
   case class Invite(publicKey: DamgardJurikPublicKey) extends BrokerMessage
   case class EncryptedNumbers(n1: BigIntegerCiphertext, n2: BigIntegerCiphertext) extends BrokerMessage
   case class EncryptedResult(n: BigIntegerCiphertext) extends BrokerMessage
   case object Abort extends BrokerMessage
+  // messages sent by a broker to itself
   private case object MultiplyNumbers extends BrokerMessage
   private case object CheckProtocolTimeout extends BrokerMessage
 
@@ -36,15 +38,20 @@ class Broker(modulusLength: Int = 128, certainty: Int = 40, protocolTimeout: Fin
   val keyPair: KeyPair = encryptor.generateKey(new DJKeyGenParameterSpec(modulusLength, certainty))
   val publicKey: DamgardJurikPublicKey = keyPair.getPublic().asInstanceOf[DamgardJurikPublicKey]
 
+  // registered clients
   var client1: Option[ActorRef] = None
   var client2: Option[ActorRef] = None
+  // ciphertexts received from clients
   var ciphertext1: Option[BigIntegerCiphertext] = None
   var ciphertext2: Option[BigIntegerCiphertext] = None
+  // decrypted ciphertexts received from clients
   var plainText1: Option[BigIntegerPlainText] = None
   var plainText2: Option[BigIntegerPlainText] = None
+  // encrypted result of multiplication of numbers received from clients
   var encryptedProduct: Option[BigIntegerCiphertext] = None
 
   override def preStart(): Unit = {
+    // check after a given timeout whether both clients sent their numbers
     context.system.scheduler.scheduleOnce(protocolTimeout, self, CheckProtocolTimeout)
   }
 
@@ -87,7 +94,7 @@ class Broker(modulusLength: Int = 128, certainty: Int = 40, protocolTimeout: Fin
         sndr2 ! EncryptedResult(ciphertext)
       }
 
-    case Prove if encryptedProduct.isDefined =>
+    case Prove =>
       for {
         cA <- ciphertext1
         cB <- ciphertext2

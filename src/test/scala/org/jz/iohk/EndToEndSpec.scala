@@ -14,6 +14,7 @@ import org.scalacheck._
 import org.scalatest.{WordSpecLike, BeforeAndAfterAll, Assertion, Matchers, PropSpec, AsyncWordSpecLike, PropSpecLike}
 import org.scalatest.prop.{GeneratorDrivenPropertyChecks, PropertyChecks}
 
+// Basic propery-based test checking that clients always receive valid proofs from a broker
 class EndToEndSpec() extends TestKit(ActorSystem("dj-test-system-2", ConfigFactory.parseString("{akka.loglevel = ERROR}")))
     with ImplicitSender with WordSpecLike with PropertyChecks with GeneratorDrivenPropertyChecks with Matchers with BeforeAndAfterAll {
 
@@ -45,6 +46,7 @@ class EndToEndSpec() extends TestKit(ActorSystem("dj-test-system-2", ConfigFacto
         } yield {
           proof1 -> proof2
         }
+        // There is no out-of-the-box support for async property based checks in Scalatest
         Await.result(proofs, timeout) shouldBe ProofResult(true) -> ProofResult(true)
       }
 

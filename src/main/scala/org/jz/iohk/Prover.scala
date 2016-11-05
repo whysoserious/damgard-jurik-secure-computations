@@ -12,12 +12,14 @@ import edu.biu.scapi.midLayer.plaintext.BigIntegerPlainText
 object Prover {
 
   import Env.ActorMessage
+  // messages sent by prover
   sealed trait ProverMessage extends ActorMessage
   case class Message1(msg: SigmaProtocolMsg) extends ProverMessage
   case class Message2(msg: SigmaProtocolMsg) extends ProverMessage
 
 }
 
+// Prover usually spawned by a broker. Responsible for providing a valid zero-knowledge proof of a computation
 class Prover(verifier: ActorRef, keyPair: KeyPair,
              cA: BigIntegerCiphertext, cB: BigIntegerCiphertext, cC: BigIntegerCiphertext,
              n1: BigIntegerPlainText, n2: BigIntegerPlainText,

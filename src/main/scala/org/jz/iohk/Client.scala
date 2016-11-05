@@ -12,6 +12,7 @@ object Client {
 
   import Env.ActorMessage
 
+  // messages sent by client actors
   sealed trait ClientMessage extends ActorMessage
   case object Register extends ClientMessage
   case class EncryptedNumber(n: BigIntegerCiphertext) extends ClientMessage
@@ -25,11 +26,16 @@ class Client(number: BigInteger, broker: ActorRef) extends Actor with ActorLoggi
   import Client._
   import Verifier._
 
+  // encrypted numbers
   var cA: Option[BigIntegerCiphertext] = None
   var cB: Option[BigIntegerCiphertext] = None
+  // encrypted result of multiplication of numbers sent by clients to a broker
   var cC: Option[BigIntegerCiphertext] = None
+  // a public key obtained from a broker used to encrypt input number
   var publicKey: Option[DamgardJurikPublicKey] = None
+  // Information from Verifier whether broker was able to provide a valid proof
   var proofResult: Option[ProofResult] = None
+  // sender waiting for a proof result before it was computed by a verifier
   var waitingForProofResult: Seq[ActorRef] = Seq()
 
   implicit val ec = context.dispatcher

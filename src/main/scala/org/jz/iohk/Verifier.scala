@@ -10,12 +10,15 @@ object Verifier {
 
   import Env.ActorMessage
 
+  //messages sent by a verifier
   sealed trait VerifierMessage extends ActorMessage
   case object Prove extends VerifierMessage
   case class Challenge(challenge: Array[Byte]) extends VerifierMessage
   case class ProofResult(success: Boolean) extends VerifierMessage
 
 }
+
+// Verifier usually spawned by a client of a broker. Responsible for validating a zero-knowledge proof of a computation performed by a broker
 class Verifier(broker: ActorRef,
                publicKey: DamgardJurikPublicKey,
                cA: BigIntegerCiphertext, cB: BigIntegerCiphertext, cC: BigIntegerCiphertext) extends Actor with LoggingInterceptor {

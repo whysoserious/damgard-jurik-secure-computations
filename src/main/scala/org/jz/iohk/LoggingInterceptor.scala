@@ -26,11 +26,13 @@ class Env extends Actor with ActorLogging {
 
   def receive = {
     case LogMessage(msg, sndr, rcvr) =>
-      println(s">>> ${customName(sndr)} -> ${customName(rcvr)}\n\t$msg\n") //TODO Use log.info
+      // Yes, println for better readability
+      println(s">>> ${customName(sndr)} -> ${customName(rcvr)}\n\t$msg\n")
   }
 
 }
 
+// more info about ReceivePipeline: http://doc.akka.io/docs/akka/2.4.12/contrib/receive-pipeline.html
 trait LoggingInterceptor extends ReceivePipeline {
 
   import Env._
